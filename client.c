@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-//#include <net/if.h>
 #include <getopt.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -38,7 +37,7 @@
 #define CACERT HOME "ca.crt"
 #define CERTF  HOME "server.crt"
 #define KEYF  HOME  "server.key"
-
+#define KEY "abcdefghijklmnop"
 
 #define PERROR(x) do { perror(x); exit(1); } while (0)
 #define ERROR(x, args ...) do { fprintf(stderr,"ERROR:" x, ## args); exit(1); } while (0)
@@ -48,56 +47,60 @@ char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
 void usage()
 {
-        fprintf(stderr, "Usage: server [-s port|]\n");
+        fprintf(stderr, "Usage: client [-c targetip:port|]\n");
         exit(0);
 }
 
-/**************************************************************************
- * tun_alloc: allocates or reconnects to a tun/tap device. The caller     *
- *            needs to reserve enough space in *dev.                      *
- **************************************************************************/
-int tun_alloc(char *dev, int flags)
+
+int
+do_hmac(unsigned char *key, unsigned char *intext, int inlen, unsigned char *outbuf)
 {
-   /* Arguments taken by the function:
-   *
-   * char *dev: the name of an interface (or '\0'). MUST have enough
-   *   space to hold the interface name if '\0' is passed
-   * int flags: interface flags (eg, IFF_TUN etc.)
-   */
-	struct ifreq ifr;
-	int fd, err;
-
-/*open the device*/
-
-	if((fd = open("/dev/net/tun", O_RDWR)) < 0){
-		perror("Open /dev/net/tun error");
-		return fd;
-	}
-///* preparation of the struct ifr, of type "struct ifreq" */
-
-	memset(&ifr, 0, sizeof(ifr));
+	int outlen;
 	
-	ifr.ifr_flags = flags; //IFF_TUN or IFF TAP
-
-	
-	if(*dev)
-	{
-		/* if a device name was specified, put it in the structure; otherwise,
-     		 * the kernel will try to allocate the "next" device of the
-      		* specified type */
-     		strncpy(ifr.ifr_name, dev, IFNAMSIZ);
-	}
-	
-	//try to create the device
-	if((err = ioctl(fd, TUNSETIFF,(void *) &ifr)) < 0){
-		perror("ioctl(TUNSETIFF) error");		
-		close(fd);
-		return err;
-	}
-	
-	strcpy(dev, ifr.ifr_name); // write back the name of the interface to dev
-	return fd;
+	HMAC_CTX mdctx;
+	HMAC_CTX_init(&mdctx);
+	HMAC_Init_ex(&mdctx,key,KEY_LEN,EVP_sha256(),NULL);
+	HMAC_Update(&mdctx,intext,inlen);
+	HMAC_Final(&mdctx,outbuf,&outlen);
+	HMAC_CTX_cleanup(&mdctx);
+	return outlen;
+		
 }
+
+int 
+do_crypt(unsigned char *key, unsigned char *iv, unsigned char* intext, int inlen, unsigned char *outtext, int do_encrypt)
+{
+	unsigned char outbuf[BUFSIZE];
+        int outlen,templen;
+
+        EVP_CIPHER_CTX ctx;
+        /* Don't set key or IV right away; we want to check lengths */
+        EVP_CIPHER_CTX_init(&ctx);
+        EVP_CipherInit_ex(&ctx, EVP_aes_128_cbc(), NULL, key, iv, do_encrypt);
+	if(!EVP_CipherUpdate(&ctx, outbuf, &outlen, intext, inlen)){
+		perror("EVP_CipherUpdate");
+	}
+	if(!EVP_CipherFinal_ex(&ctx, outbuf+outlen, &templen)){
+		//perror("EVP_CipherFinal_ex");
+	}
+	outlen=outlen+templen;
+	EVP_CIPHER_CTX_cleanup(&ctx);
+	
+	memcpy(outtext, outbuf,outlen);
+
+	return outlen;
+}
+
+
+unsigned char* getkey()
+{
+	unsigned char * key = (unsigned char *)malloc(sizeof(unsigned char)*KEY_LEN);
+	FILE* random = fopen("/dev/urandom","r");
+	fread(key, sizeof(unsigned char)*KEY_LEN,1,random);
+	fclose(random);
+	return key;
+}
+
 
 int iwrite(int fd, char *buf, int n)
 {
@@ -132,21 +135,28 @@ int main(int argc, char *argv[])
         int fd, s, fromlen, soutlen, port, PORT, l;
         char c, *p, *ip;
         char buf[BUFSIZE];
+	unsigned char *plainbuf, *cryptbuf, *hmacbuf, *tmpbuf;
+	unsigned char *key, *iv;
         fd_set fdset;
+	int plainlen, cryptlen;
 
 
         int MODE = 0, TUNMODE = IFF_TUN, DEBUG = 0;
 
-        while ((c = getopt(argc, argv, "s:c:ehd")) != -1) {
+	plainbuf = malloc(BUFSIZE);
+	cryptbuf = malloc(BUFSIZE);
+	hmacbuf = malloc(BUFSIZE);
+	tmpbuf = malloc(BUFSIZE);
+	key = malloc(KEY_LEN);
+	iv = malloc(KEY_LEN);
+	strncpy(key,KEY, KEY_LEN);
+
+        while ((c = getopt(argc, argv, "c:ehd")) != -1) {
                 switch (c) {
                 case 'h':
                         usage();
                 case 'd':
                         DEBUG++;
-                        break;
-                case 's':
-                        MODE = 1;
-                        PORT = atoi(optarg);
                         break;
                 case 'c':
                         MODE = 2;
@@ -221,7 +231,22 @@ while(1){
                         if (DEBUG) write(1,">", 1);
                         l = iread(fd, buf, sizeof(buf));
 			if( l != -1)
-			{	if(sendto(s, buf, l, 0, (struct sockaddr *)&from, fromlen) < 0)
+			{	//do encryption
+				iv = getkey();
+				cryptlen = do_crypt(key, iv, buf, l, cryptbuf, 1);
+				memcpy(tmpbuf,iv,KEY_LEN);
+				memcpy(tmpbuf+KEY_LEN, cryptbuf, cryptlen);
+				
+				//hmac inclued iv + encrypted data
+				do_hmac(key,tmpbuf,KEY_LEN+cryptlen,hmacbuf);
+					
+				//copy iv, encrypted data and hmac into buf and then send
+				memcpy(buf, iv, KEY_LEN);
+				memcpy(buf+KEY_LEN, cryptbuf, cryptlen);
+				memcpy(buf+KEY_LEN+cryptlen, hmacbuf, SHA256_LEN);
+				int buflen = KEY_LEN + cryptlen + SHA256_LEN;
+				
+				if(sendto(s, buf, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
 					PERROR("send to");
 			}
 	}
@@ -234,7 +259,21 @@ while(1){
                                        inet_ntoa(sout.sin_addr), ntohs(sout.sin_port),
                                        inet_ntoa(from.sin_addr), ntohs(from.sin_port));
 		
-		l = iwrite(fd, buf, l);
+		
+		memcpy(cryptbuf, buf, l-SHA256_LEN);
+		memcpy(iv, buf, KEY_LEN);
+		// do hmac to check the signature, if matches, decrypt the data
+		do_hmac(key,cryptbuf,l-SHA256_LEN,hmacbuf);
+		if (memcmp(hmacbuf, buf+l-SHA256_LEN, SHA256_LEN) == 0 && l!= -1)
+		{	
+			//do decryption, need to exclude iv and hmac
+                        plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,l-KEY_LEN-SHA256_LEN, plainbuf, 0);
+                        iwrite(fd, plainbuf, plainlen);
+		}
+		else{
+			printf("ERROR, message check failed.\n");
+			printf("message length: %d\n", l);
+		}
 	}
 
 }
