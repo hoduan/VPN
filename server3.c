@@ -292,7 +292,16 @@ launchtcp()
 				{
 					char *msg = "Authentication passed, connected with client";
 					SSL_write(ssl, msg, strlen(msg));
+					printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
 				}
+				else 
+					{
+						char *msg="Authorization failed, disconnect with client.";
+						l=SSL_write(ssl,msg,strlen(msg));
+						printf("%s\n",msg);
+						close(client_fd);
+						exit(0);
+					}
 			}
 		
 
@@ -368,6 +377,12 @@ int main(int argc, char *argv[])
 	if ( bind(s,(struct sockaddr *)&saddr, sizeof(saddr)) < 0) PERROR("bind");
 	
 	fromlen = sizeof(from);
+//////////////////////////////////////////////////////////////////////////////////////////////
+//Authentication Part
+
+launchtcp();
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 //authentication code

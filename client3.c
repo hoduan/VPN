@@ -25,8 +25,8 @@
 #include <openssl/err.h>
 #define SERVERNAME "PKILabServer.com"
 #define IF_NAME "toto0"
-#define UDP_PORT 10002
-#define TCP_PORT 10001
+#define PORT 10001
+#define TCP_PORT 10002
 #define BUFSIZE 4096
 #define MSGSIZE 8192
 #define MAX_CONNECTION 10
@@ -256,6 +256,12 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	memset(credential, 0, strlen(credential));
 	memset(temp, 0, templen);
 	memset(key, 0, KEY_LEN);
+	
+	l = SSL_read(ssl, buf, BUFSIZE);
+	char *msg = "Authorization failed, disconnect with client."
+	if(memcmp(msg, buf, strlen(msg)) ==0){printf("authorization failed");}
+	else printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
+
 
 }
 
