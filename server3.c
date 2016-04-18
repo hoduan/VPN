@@ -25,8 +25,8 @@
 #include <openssl/err.h>
 
 #define IF_NAME "toto0"
-#define UDP_PORT 55556
-#define TCP_PORT 55555
+#define PORT 10001
+#define TCP_PORT 10002
 #define BUFSIZE 4096
 #define MSGSIZE 8192
 #define MAX_CONNECTION 10
@@ -150,11 +150,10 @@ int iread(int fd, char *buf, int n)
 SSL_CTX* myctx(){
 	
 	SSL_CTX *ctx;
-	const SSL_METHOD *meth;
+	const SSL_METHOD *meth = SSLv23_server_method();
 	//initialize
 	SSL_load_error_strings();
-	SSL_Library_init()
-  	meth = SSLv23_server_method();
+	SSL_library_init();
   	//create ctx
 	ctx = SSL_CTX_new (meth);
   	if (!ctx) {
@@ -165,7 +164,7 @@ SSL_CTX* myctx(){
 	//Do not verify client certificate from the server side
 	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
 	//load ca.crt
-	SSL_CTX_load_verfity_locations(ctx, CACERT, NULL);
+	SSL_CTX_load_verify_locations(ctx, CACERT, NULL);
 	//set server's crt
 	if (SSL_CTX_use_certificate_file(ctx, CERTF, SSL_FILETYPE_PEM) <= 0) {
                 ERR_print_errors_fp(stderr);
@@ -187,7 +186,7 @@ SSL_CTX* myctx(){
 	
 }
 
-int usercheck(char *msg, int port){
+int usercheck(char *msg){
 
 	unsigned char *user, *pwd, *port;	
 	unsigned char phash[32];
@@ -198,18 +197,44 @@ int usercheck(char *msg, int port){
 	user = strtok(msg, ":");
 	pwd = strtok(NULL,":");
 	gethash(pwd, phash);
+	for(i = 0; i<32; i++)
+	{
+		sprintf(hash+i*2, "%02x", phash[i]);
+	}
+
+		memcpy(tmp, user, strlen(user));
+		memcpy(tmp+strlen(user), " ",1);
+		memcpy(tmp+strlen(user)+1, &hash, 64);
+		memcpy(tmp+strlen(user)+1+64, "\x0a",1);	
+		
+		FILE *f;
+		//ssize_t read;
+		size_t len;
+		char* line;
+		f = fopen("data.txt", "r");
+		if(f == NULL) {perror("the data file i null, nothing stored there!"); return 0;}
+		while((getline(&line, &len, f))!=-1)
+		{
+			if(memcmp(line, tmp, strlen(line)-1) ==0)
+			{
+				return 1;
+				break;
+			}
+		}
+	return 0;
 	
 }
 
-launchtcp(int port)
+launchtcp()
 {
 	int server_fd, client_fd, i;
 	struct sockaddr_in saddr, caddr;
 	int l, optval =1;
 	pid_t child_pid;
 	socklen_t len;
+	unsigned short int port = TCP_PORT;
 	
-	memset(&saddr, 0 sizeof(saddr));
+	memset(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	saddr.sin_port = htons(port);
@@ -244,13 +269,11 @@ launchtcp(int port)
         // accept if any
 
 
-	while(1)
-	{
 		len = sizeof(struct sockaddr_in);
 		memset(&caddr, 0, len);
-		client_fd = accept(server_fd, (struct sockaddr*) &caddr &len);
+		client_fd = accept(server_fd, (struct sockaddr*) &caddr, &len);
 		char buf[BUFSIZE];
-		printf("TCP: Initial connection with IP: %s\n", inet_ntoa(clientaddr.sin_addr));
+		printf("TCP: Initial connection with IP: %s\n", inet_ntoa(caddr.sin_addr));
 
 		SSL* ssl;
 		ssl = SSL_new(myctx());
@@ -259,23 +282,20 @@ launchtcp(int port)
 		SSL_set_fd (ssl, client_fd);
   		if(SSL_accept (ssl) == -1){ERR_print_errors_fp(stderr); exit(2);}
 		 
-		
-		while(1)
-		{
+	
 			memset(&buf, 0, sizeof(buf));
 			l = SSL_read(ssl, buf, BUFSIZE);
-			(if l > 0)
+			if (l > 0)
 			{
 				//client authentication
 				if(usercheck(buf) == 1)
 				{
 					char *msg = "Authentication passed, connected with client";
-					ssl_write(ssl, msg, strlen(msg));
+					SSL_write(ssl, msg, strlen(msg));
 				}
 			}
-		}
 		
-	}
+
 
 }
 
@@ -283,7 +303,7 @@ int main(int argc, char *argv[])
 {
         struct sockaddr_in saddr, caddr,sin, sout, from;
         struct ifreq ifr;
-        int fd, s, fromlen, soutlen, port, PORT, l;
+        int fd, s, fromlen, soutlen, port, l;
         char c, *p, *ip;
         char buf[BUFSIZE];
 	unsigned char *plainbuf, *cryptbuf, *hmacbuf, *tmpbuf;
@@ -310,7 +330,7 @@ int main(int argc, char *argv[])
                         break;
                 case 's':
                         MODE = 1;
-                        PORT = atoi(optarg);
+                        //PORT = atoi(optarg);
                         break;
                 case 'e':
                         TUNMODE = IFF_TAP;

@@ -99,7 +99,7 @@ SSL_CTX* myctx(){
         X509 *cert;
         
         SSL_load_error_strings();
-        SSL_library_init(); 
+        SSL_library_init();//OpenSSL_add_ssl_algorithms() and SSLeay_add_ssl_algorithms() are synonyms for SSL_library_init(). 
         ctx = SSL_CTX_new (meth);
         if(!ctx){
                 ERR_print_errors_fp(stderr);
@@ -182,6 +182,22 @@ int iread(int fd, char *buf, int n)
   return len;
 }
 
+void cleantcp(SSL* ssl, SSL_CTX* ctx, int sock_fd)
+{
+	if(sock_fd!=-1) close(sock_fd);
+	if(ssl!=NULL) SSL_free(ssl);
+	if(ctx!=NULL) SSL_CTX_free(ctx);
+	exit(1);
+}
+
+void cleanudp(int fd, int s)
+{
+	if (fd!=-1) close(fd);
+	if (s!=-1) close(s);
+	exit(1);
+}
+
+
 void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsigned char* key)
 {
 	int sock_fd;
@@ -201,7 +217,7 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 		//cleanuptcp(NULL,NULL,sock_fd,mq_fd,mq_fd_tcp,1);
 	}
 	// connect
-	if( (connect(sock_fd, (struct sockaddr*) &serveraddr, sizeof(struct sockaddr))) <0 )
+	if( (connect(sock_fd, (struct sockaddr*) &saddr, sizeof(struct sockaddr))) <0 )
 	{
 		perror("connect() error!");
 		//cleanuptcp(NULL,NULL,sock_fd,mq_fd,mq_fd_tcp,1);
@@ -229,9 +245,10 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 		perror("ssl_connect");
 		//cleanuptcp(ssl,ctx,sock_fd,mq_fd,mq_fd_tcp,1);
 	}
-	if(verifycommonname(ssl)==0){
+	if(checkCN(ssl)==0){
 		printf("Invalid common name.");
-		//cleanuptcp(ssl,ctx,sock_fd,mq_fd,mq_fd_tcp,1);
+		exit(1);
+		cleantcp(ssl,ctx,sock_fd);
 	}
 	l=SSL_write(ssl,temp,templen);
 
@@ -257,7 +274,7 @@ int main(int argc, char *argv[])
 
         int MODE = 0, TUNMODE = IFF_TUN, DEBUG = 0;
 
-		plainbuf = malloc(BUFSIZE);
+	plainbuf = malloc(BUFSIZE);
 	cryptbuf = malloc(BUFSIZE);
 	hmacbuf = malloc(BUFSIZE);
 	tmpbuf = malloc(BUFSIZE);
@@ -265,6 +282,8 @@ int main(int argc, char *argv[])
 	iv = malloc(KEY_LEN);
 	strncpy(key,KEY, KEY_LEN);
 
+
+	char * credential = "user:userpwd";
         while ((c = getopt(argc, argv, "c:ehd")) != -1) {
                 switch (c) {
                 case 'h':
@@ -325,9 +344,8 @@ int main(int argc, char *argv[])
 ////////////////////////////////////////////////////////////////////////////////////////////
 /* Authentication Part*/
 
-launchtcp(ip, )
-
-
+key = getkey();
+launchtcp(ip, credential, caddr,key);
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 /*authentication code*/
