@@ -23,7 +23,7 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#define SERVERNAME "PKILabServer.com"
+#define SERVERNAME "ho.duan"
 #define IF_NAME "toto0"
 #define PORT 10001
 #define TCP_PORT 10002
@@ -50,7 +50,7 @@ char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
 void usage()
 {
-        fprintf(stderr, "Usage: client [-c targetip:port|]\n");
+        fprintf(stderr, "Usage: client [targetip]\n");
         exit(0);
 }
 
@@ -143,11 +143,8 @@ int checkCN(SSL *ssl)
         X509_NAME_get_text_by_NID(subject, nid_cn, common_name, 256);
         printf("CN: %s\n", common_name);
         char *servername=SERVERNAME;
-        if(strncmp(common_name, servername, strlen(servername))==0){
-                return 1;
-        } else {
-                return 0;
-        }
+        if(strncmp(common_name, servername, strlen(servername))==0){printf("\ncommon name matches\n");return 1;} 
+	else {printf("\ncommon name check failed\n");return 0;}
 
 }
 unsigned char* getkey()
@@ -234,20 +231,16 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	SSL* ssl;
 	SSL_CTX* ctx = myctx();
 
-	printf("testing");	
 	templen = sprintf(temp,"%s%s", credential,":");
 	memcpy(temp+templen, key, KEY_LEN);
 	templen = templen + KEY_LEN;
 	
 	ssl = SSL_new(ctx);  CHK_NULL(ssl);
-	printf("\ntesting2\n");
 	if(!ssl){
 		perror("SSL_new");
 		cleantcp(ssl,ctx,sock_fd);
 	}
-	printf("\ntesting3\n");
 	SSL_set_fd(ssl,sock_fd);	
-	printf("\ntesting4\n");
 	
 	err = SSL_connect(ssl); CHK_SSL(err);
 	if(err != 1) {
@@ -255,13 +248,14 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 		cleantcp(ssl,ctx,sock_fd);
 	}
 
-	printf("\ntesting5\n");
-	if(checkCN(ssl)==0){
+	int cn = checkCN(ssl);
+	printf("%d", cn);
+	if(cn != 1){
 		printf("Invalid common name.");
 		exit(1);
 		cleantcp(ssl,ctx,sock_fd);
-	}
-	else {printf("check common name passed");}
+	}else {printf("check common name passed");}
+	
 	l=SSL_write(ssl,temp,templen);
 
 	// clean credential, key, iv
