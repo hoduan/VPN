@@ -33,7 +33,7 @@
 #define KEY_LEN 16
 #define SHA256_LEN 32
 #define MAX_COUNT 100
-#define HOME "./ycheng/"
+#define HOME "./ca/"
 #define CACERT HOME "ca.crt"
 #define CERTF  HOME "server.crt"
 #define KEYF  HOME  "server.key"
