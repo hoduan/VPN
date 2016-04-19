@@ -152,7 +152,6 @@ int iread(int fd, char *buf, int n)
 
 SSL_CTX* myctx(){
 	
-printf("test:%s\n", KEYF);
 	SSL_CTX *ctx;
 	const SSL_METHOD *meth = SSLv23_server_method();
 	//initialize
@@ -165,7 +164,6 @@ printf("test:%s\n", KEYF);
    		exit(2);
 	}
 	
-	printf("\nmyctx1\n");
 	//Do not verify client certificate from the server side
 	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
 	//load ca.crt
@@ -175,64 +173,25 @@ printf("test:%s\n", KEYF);
                 ERR_print_errors_fp(stderr);
                 exit(3);
         }
-	printf("testing certification set");
 	// set server private key
         if (SSL_CTX_use_PrivateKey_file(ctx, KEYF, SSL_FILETYPE_PEM) <= 0) {
                 ERR_print_errors_fp(stderr);
                 exit(4);
         }
 	
-	printf("testing provate key set");
 
         // private key and certificate consistency
         if (!SSL_CTX_check_private_key(ctx)) {
                 fprintf(stderr,"Private key does not match the certificate public key\n");
                 exit(5);
         }
-	else{printf("key and certificate consistency checked");}
+	else{printf("\nkey and certificate consistency checked\n");}
 
         return ctx;
 
 	
 }
 
-SSL_CTX*
-initctx()
-{
-	SSL_CTX *ctx;
-        const SSL_METHOD *meth = SSLv23_server_method();
-	// init
-        SSL_load_error_strings();
-        SSL_library_init();
-        // create ctx
-        ctx = SSL_CTX_new(meth);
-        if(!ctx){
-                ERR_print_errors_fp(stderr);
-                exit(2);
-        }
-        // not verify certificate from server side
-        SSL_CTX_set_verify(ctx,SSL_VERIFY_NONE,NULL);
-        // load CA crt
-        SSL_CTX_load_verify_locations(ctx,CACERT,NULL);
-        // set server crt
-        if (SSL_CTX_use_certificate_file(ctx, CERTF, SSL_FILETYPE_PEM) <= 0) {
-                ERR_print_errors_fp(stderr);
-                exit(3);
-        }
-
-
-        // set server private key
-        if (SSL_CTX_use_PrivateKey_file(ctx, KEYF, SSL_FILETYPE_PEM) <= 0) {
-                ERR_print_errors_fp(stderr);
-                exit(4);
-        }
-        // private key and certificate consistency
-        if (!SSL_CTX_check_private_key(ctx)) {
-                fprintf(stderr,"Private key does not match the certificate public key\n");
-                exit(5);
-        }
-	return ctx;
-}
 
 int usercheck(char *msg){
 
@@ -264,7 +223,8 @@ int usercheck(char *msg){
 		while((getline(&line, &len, f))!=-1)
 		{
 			if(memcmp(line, tmp, strlen(line)-1) ==0)
-			{
+			{	
+				printf("\nuser checked passed!\n");
 				return 1;
 				break;
 			}
@@ -325,40 +285,38 @@ launchtcp()
 /////////////////////////////////////////////////////////////////////////////////////////
 //create ctx
 		SSL* ssl;
-		printf("test1");
 		ssl = SSL_new (myctx());  CHK_NULL(ssl);
-		printf("teitii");
 		if(!ssl){perror("ssl_new error"); exit(1);}
 		 /* TCP connection and ssl are ready. Do server side SSL. */
 		SSL_set_fd (ssl, client_fd);
 		err = SSL_accept(ssl); CHK_SSL(err);
-  		if(SSL_accept (ssl) == -1)
+  		if(err == -1)
 			{	
 				ERR_print_errors_fp(stderr); 
 				exit(2);
 			}
 		 
 	
-			memset(&buf, 0, sizeof(buf));
-			l = SSL_read(ssl, buf, BUFSIZE);
-			if (l > 0)
+		memset(&buf, 0, sizeof(buf));
+		l = SSL_read(ssl, buf, BUFSIZE);
+		if (l > 0)
+		{
+			//client authentication
+			if(usercheck(buf) == 1)
 			{
-				//client authentication
-				if(usercheck(buf) == 1)
-				{
-					char *msg = "Authentication passed, connected with client";
-					SSL_write(ssl, msg, strlen(msg));
-					printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
-				}
-				else 
-					{
-						char *msg="Authorization failed, disconnect with client.";
-						l=SSL_write(ssl,msg,strlen(msg));
-						printf("%s\n",msg);
-						close(client_fd);
-						exit(0);
-					}
+				char *msg = "Authentication passed, connected with client";
+				l = SSL_write(ssl, msg, strlen(msg));
+				printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
 			}
+			else 
+			{
+				char *msg="Authorization failed, disconnect with client.";
+				l=SSL_write(ssl,msg,strlen(msg));
+				printf("%s\n",msg);
+				close(client_fd);
+				exit(0);
+			}
+		}
 		
 
 
