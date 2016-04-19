@@ -230,26 +230,33 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	char tempbuf[BUFSIZE];	
 	SSL* ssl;
 	SSL_CTX* ctx = myctx();
-	
+
+	printf("testing");	
 	templen = sprintf(temp,"%s%s", credential,":");
 	memcpy(temp+templen, key, KEY_LEN);
 	templen = templen + KEY_LEN;
 	
 	ssl = SSL_new(ctx);
+	printf("\ntesting2\n");
 	if(!ssl){
 		perror("SSL_new");
-		//cleanuptcp(ssl,ctx,sock_fd,mq_fd,mq_fd_tcp,1);
+		cleantcp(ssl,ctx,sock_fd);
 	}
+	printf("\ntesting3\n");
 	SSL_set_fd(ssl,sock_fd);	
+	printf("\ntesting4\n");
 	if(SSL_connect(ssl)!=1) {
 		perror("ssl_connect");
-		//cleanuptcp(ssl,ctx,sock_fd,mq_fd,mq_fd_tcp,1);
+		cleantcp(ssl,ctx,sock_fd);
 	}
+
+	printf("\ntesting5\n");
 	if(checkCN(ssl)==0){
 		printf("Invalid common name.");
 		exit(1);
 		cleantcp(ssl,ctx,sock_fd);
 	}
+	else {printf("check common name passed");}
 	l=SSL_write(ssl,temp,templen);
 
 	// clean credential, key, iv
@@ -258,7 +265,7 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	memset(key, 0, KEY_LEN);
 	
 	l = SSL_read(ssl, buf, BUFSIZE);
-	char *msg = "Authorization failed, disconnect with client."
+	char *msg = "Authorization failed, disconnect with client.";
 	if(memcmp(msg, buf, strlen(msg)) ==0){printf("authorization failed");}
 	else printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
 
@@ -269,7 +276,7 @@ int main(int argc, char *argv[])
 {
         struct sockaddr_in saddr, caddr,sin, sout, from;
         struct ifreq ifr;
-        int fd, s, fromlen, soutlen, port, PORT, l;
+        int fd, s, fromlen, soutlen, port,CPORT, l;
         char c, *p, *ip;
         char buf[BUFSIZE];
 	unsigned char *plainbuf, *cryptbuf, *hmacbuf, *tmpbuf;
@@ -303,8 +310,8 @@ int main(int argc, char *argv[])
                         if (!p) ERROR("invalid argument : [%s]\n",optarg);
                         *p = 0;
                         ip = optarg;
-                        port = atoi(p+1);
-                        PORT = 0;
+                        port = PORT;
+                        CPORT = 0;
                         break;
                 case 'e':
                         TUNMODE = IFF_TAP;
@@ -342,7 +349,7 @@ int main(int argc, char *argv[])
 	memset(&caddr,0,sizeof(caddr));
 	caddr.sin_family = AF_INET;
 	caddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	caddr.sin_port = htons(PORT);
+	caddr.sin_port = htons(CPORT);
 	if ( bind(s,(struct sockaddr *)&caddr, sizeof(caddr)) < 0) PERROR("bind");
 	
 	fromlen = sizeof(from);
@@ -353,8 +360,9 @@ int main(int argc, char *argv[])
 key = getkey();
 launchtcp(ip, credential, caddr,key);
 
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////
-/*authentication code*/
+//authentication code
 	from.sin_family = AF_INET;
 	from.sin_port = htons(port);
 	inet_aton(ip, &from.sin_addr);
@@ -366,7 +374,7 @@ launchtcp(ip, credential, caddr,key);
 		ERROR("Bad magic word from peer\n");
 
 	 printf("Connection with %s:%i established\n",inet_ntoa(from.sin_addr), ntohs(from.sin_port));
-	
+*/
 //////////////////////////////////////////////////////////////////////////////////////
 /* fetch and send packets */
 

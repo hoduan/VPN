@@ -33,7 +33,7 @@
 #define KEY_LEN 16
 #define SHA256_LEN 32
 #define MAX_COUNT 100
-#define HOME "./ca/"
+#define HOME "./ycheng/"
 #define CACERT HOME "ca.crt"
 #define CERTF  HOME "server.crt"
 #define KEYF  HOME  "server.key"
@@ -149,6 +149,7 @@ int iread(int fd, char *buf, int n)
 
 SSL_CTX* myctx(){
 	
+printf("test:%s\n", KEYF);
 	SSL_CTX *ctx;
 	const SSL_METHOD *meth = SSLv23_server_method();
 	//initialize
@@ -161,6 +162,7 @@ SSL_CTX* myctx(){
    		exit(2);
 	}
 	
+	printf("\nmyctx1\n");
 	//Do not verify client certificate from the server side
 	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
 	//load ca.crt
@@ -170,8 +172,53 @@ SSL_CTX* myctx(){
                 ERR_print_errors_fp(stderr);
                 exit(3);
         }
-
+	printf("testing certification set");
 	// set server private key
+        if (SSL_CTX_use_PrivateKey_file(ctx, KEYF, SSL_FILETYPE_PEM) <= 0) {
+                ERR_print_errors_fp(stderr);
+                exit(4);
+        }
+	
+	printf("testing provate key set");
+
+        // private key and certificate consistency
+        if (!SSL_CTX_check_private_key(ctx)) {
+                fprintf(stderr,"Private key does not match the certificate public key\n");
+                exit(5);
+        }
+	else{printf("key and certificate consistency checked");}
+
+        return ctx;
+
+	
+}
+
+SSL_CTX*
+initctx()
+{
+	SSL_CTX *ctx;
+        const SSL_METHOD *meth = SSLv23_server_method();
+	// init
+        SSL_load_error_strings();
+        SSL_library_init();
+        // create ctx
+        ctx = SSL_CTX_new(meth);
+        if(!ctx){
+                ERR_print_errors_fp(stderr);
+                exit(2);
+        }
+        // not verify certificate from server side
+        SSL_CTX_set_verify(ctx,SSL_VERIFY_NONE,NULL);
+        // load CA crt
+        SSL_CTX_load_verify_locations(ctx,CACERT,NULL);
+        // set server crt
+        if (SSL_CTX_use_certificate_file(ctx, CERTF, SSL_FILETYPE_PEM) <= 0) {
+                ERR_print_errors_fp(stderr);
+                exit(3);
+        }
+
+
+        // set server private key
         if (SSL_CTX_use_PrivateKey_file(ctx, KEYF, SSL_FILETYPE_PEM) <= 0) {
                 ERR_print_errors_fp(stderr);
                 exit(4);
@@ -181,9 +228,7 @@ SSL_CTX* myctx(){
                 fprintf(stderr,"Private key does not match the certificate public key\n");
                 exit(5);
         }
-        return ctx;
-
-	
+	return ctx;
 }
 
 int usercheck(char *msg){
@@ -274,13 +319,20 @@ launchtcp()
 		client_fd = accept(server_fd, (struct sockaddr*) &caddr, &len);
 		char buf[BUFSIZE];
 		printf("TCP: Initial connection with IP: %s\n", inet_ntoa(caddr.sin_addr));
-
+/////////////////////////////////////////////////////////////////////////////////////////
+//create ctx
 		SSL* ssl;
-		ssl = SSL_new(myctx());
+		printf("test1");
+		ssl = SSL_new (myctx());
+		printf("teitii");
 		if(!ssl){perror("ssl_new error"); exit(1);}
 		 /* TCP connection and ssl are ready. Do server side SSL. */
 		SSL_set_fd (ssl, client_fd);
-  		if(SSL_accept (ssl) == -1){ERR_print_errors_fp(stderr); exit(2);}
+  		if(SSL_accept (ssl) == -1)
+			{	
+				ERR_print_errors_fp(stderr); 
+				exit(2);
+			}
 		 
 	
 			memset(&buf, 0, sizeof(buf));
@@ -383,7 +435,7 @@ int main(int argc, char *argv[])
 launchtcp();
 
 
-
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////
 //authentication code
 	while(1)
@@ -401,7 +453,7 @@ launchtcp();
 	printf("Connection with %s:%i established\n",
                inet_ntoa(from.sin_addr), ntohs(from.sin_port));
 
-
+*/
 //////////////////////////////////////////////////////////////////////////////////////////////////
 //Send and receive packets	
 	while(1){
