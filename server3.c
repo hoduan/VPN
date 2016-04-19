@@ -41,6 +41,9 @@
 
 #define PERROR(x) do { perror(x); exit(1); } while (0)
 #define ERROR(x, args ...) do { fprintf(stderr,"ERROR:" x, ## args); exit(1); } while (0)
+#define CHK_NULL(x) if ((x)==NULL) exit (1)
+#define CHK_ERR(err,s) if ((err)==-1) { perror(s); exit(1); }
+#define CHK_SSL(err) if ((err)==-1) { ERR_print_errors_fp(stderr); exit(2); }
 
 char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
@@ -274,7 +277,7 @@ launchtcp()
 {
 	int server_fd, client_fd, i;
 	struct sockaddr_in saddr, caddr;
-	int l, optval =1;
+	int l,err, optval =1;
 	pid_t child_pid;
 	socklen_t len;
 	unsigned short int port = TCP_PORT;
@@ -323,11 +326,12 @@ launchtcp()
 //create ctx
 		SSL* ssl;
 		printf("test1");
-		ssl = SSL_new (myctx());
+		ssl = SSL_new (myctx());  CHK_NULL(ssl);
 		printf("teitii");
 		if(!ssl){perror("ssl_new error"); exit(1);}
 		 /* TCP connection and ssl are ready. Do server side SSL. */
 		SSL_set_fd (ssl, client_fd);
+		err = SSL_accept(ssl); CHK_SSL(err);
   		if(SSL_accept (ssl) == -1)
 			{	
 				ERR_print_errors_fp(stderr); 

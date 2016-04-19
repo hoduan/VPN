@@ -41,6 +41,9 @@
 
 #define PERROR(x) do { perror(x); exit(1); } while (0)
 #define ERROR(x, args ...) do { fprintf(stderr,"ERROR:" x, ## args); exit(1); } while (0)
+#define CHK_NULL(x) if ((x)==NULL) exit (1)
+#define CHK_ERR(err,s) if ((err)==-1) { perror(s); exit(1); }
+#define CHK_SSL(err) if ((err)==-1) { ERR_print_errors_fp(stderr); exit(2); }
 
 char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
@@ -100,7 +103,7 @@ SSL_CTX* myctx(){
         
         SSL_load_error_strings();
         SSL_library_init();//OpenSSL_add_ssl_algorithms() and SSLeay_add_ssl_algorithms() are synonyms for SSL_library_init(). 
-        ctx = SSL_CTX_new (meth);
+        ctx = SSL_CTX_new (meth); CHK_NULL(ctx);
         if(!ctx){
                 ERR_print_errors_fp(stderr);
                 exit(2);
@@ -201,7 +204,7 @@ void cleanudp(int fd, int s)
 void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsigned char* key)
 {
 	int sock_fd;
-	int l, i;
+	int l, i, err;
 	struct sockaddr_in saddr, caddr;
 	char buf[BUFSIZE];
 	
@@ -236,7 +239,7 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	memcpy(temp+templen, key, KEY_LEN);
 	templen = templen + KEY_LEN;
 	
-	ssl = SSL_new(ctx);
+	ssl = SSL_new(ctx);  CHK_NULL(ssl);
 	printf("\ntesting2\n");
 	if(!ssl){
 		perror("SSL_new");
@@ -245,7 +248,9 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	printf("\ntesting3\n");
 	SSL_set_fd(ssl,sock_fd);	
 	printf("\ntesting4\n");
-	if(SSL_connect(ssl)!=1) {
+	
+	err = SSL_connect(ssl); CHK_SSL(err);
+	if(err != 1) {
 		perror("ssl_connect");
 		cleantcp(ssl,ctx,sock_fd);
 	}
