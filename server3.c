@@ -47,14 +47,6 @@
 
 char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
-
-void usage()
-{
-        fprintf(stderr, "Usage: server [-s port|]\n");
-        exit(0);
-}
-
-
 int do_hmac(unsigned char *key, unsigned char *intext, int inlen, unsigned char *outbuf)
 {
 	int outlen;
@@ -192,7 +184,7 @@ SSL_CTX* myctx(){
 	
 }
 
-
+//check user record, return 1 on success, 0 on failure
 int usercheck(char *msg){
 
 	unsigned char *user, *pwd;	
@@ -203,7 +195,6 @@ int usercheck(char *msg){
 	
 	user = strtok(msg, ":");
 	pwd = strtok(NULL,":");
-	printf("\n%s\n", pwd);
 	gethash(pwd, phash);
 	int index;
 	for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
@@ -218,20 +209,18 @@ int usercheck(char *msg){
 
 
 		memcpy(tmp, user, strlen(user));
-		memcpy(tmp+strlen(user), " ",1);
+		memcpy(tmp+strlen(user), ":",1);
 		memcpy(tmp+strlen(user)+1, &hash, 64);
-		memcpy(tmp+strlen(user)+1+64, "\x0a",1);	
-		printf("%s",tmp);
+		memcpy(tmp+strlen(user)+1+64, "\x0a",1); // add a newline character	
 		FILE *f;
-		//ssize_t read;
 		size_t len;
 		char* line;
 		f = fopen("data.txt", "r");
 		if(f == NULL) {perror("the data file is null, nothing stored there!"); return 0;}
 		while((getline(&line, &len, f))!=-1)
 		{
-			if(memcmp(line, tmp, strlen(line)-1) ==0)
-			{	
+			if((memcmp(line, tmp, strlen(tmp)) ==0) && (strlen(tmp) == strlen(line)))
+			{
 				printf("\nAuthorization checking passed!\n");
 				return 1;
 				break;
@@ -359,7 +348,7 @@ int main(int argc, char *argv[])
 	int plainlen, cryptlen;
         fd_set fdset;
 
-        int MODE = 0, TUNMODE = IFF_TUN, DEBUG = 0;
+        int TUNMODE = IFF_TUN, DEBUG = 1;
 
 	plainbuf = malloc(BUFSIZE);
         cryptbuf = malloc(BUFSIZE);
@@ -368,27 +357,18 @@ int main(int argc, char *argv[])
         key = malloc(KEY_LEN);
         iv = malloc(KEY_LEN);
         strncpy(key,KEY, KEY_LEN);
-
-        while ((c = getopt(argc, argv, "s:ehd")) != -1) {
+/*
+        while ((c = getopt(argc, argv, "ed")) != -1) {
                 switch (c) {
-                case 'h':
-                        usage();
                 case 'd':
                         DEBUG++;
-                        break;
-                case 's':
-                        MODE = 1;
-                        //PORT = atoi(optarg);
                         break;
                 case 'e':
                         TUNMODE = IFF_TAP;
                         break;
-                default:
-                        usage();
                 }
 
-	} 
-	if (MODE == 0) usage();
+	} */
 ///////////////////////////////////////////////////////////////////////////////////////////
 //allocate tun/tap interface 
 //dev name is toto0 if you are the first one to connect
