@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <getopt.h>
+#include <netdb.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
 #include <fcntl.h>
@@ -50,7 +51,7 @@ char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
 void usage()
 {
-        fprintf(stderr, "Usage: client [targetip]\n");
+        fprintf(stderr, "Usage: client [targethostname] [username:pwd]\n");
         exit(0);
 }
 
@@ -115,7 +116,7 @@ SSL_CTX* myctx(){
 }
 
 // verify the common name on the server's certificate, return 1 on success, 0 for failure
-int checkCN(SSL *ssl)
+int checkCN(SSL *ssl, char *hostname)
 {
 	X509 *cert;
         cert=SSL_get_peer_certificate(ssl);
@@ -142,8 +143,9 @@ int checkCN(SSL *ssl)
         char common_name[256];
         X509_NAME_get_text_by_NID(subject, nid_cn, common_name, 256);
         printf("CN: %s\n", common_name);
-        char *servername="ho.duan";
-        if(strncmp(common_name, servername, strlen(servername))==0){return 1;} 
+        char *servername=strtok(hostname,".");
+	servername = strtok(NULL," ");
+        if(strncmp(common_name, servername, strlen(servername))==0 && (strlen(servername) == strlen(common_name))){return 1;} 
 	else {printf("\ncommon name check failed\n");return 0;}
 
 }
@@ -198,7 +200,7 @@ void cleanudp(int fd, int s)
 }
 
 
-void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsigned char* key)
+void launchtcp(char *address, char *hostname, char* credential, struct sockaddr_in udpaddr, unsigned char* key)
 {
 	int sock_fd;
 	int l, i, err;
@@ -231,11 +233,9 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	SSL* ssl;
 	SSL_CTX* ctx = myctx();
 	
-	printf("%s\n", credential);
 	templen = sprintf(temp,"%s%s", credential,":");
 	memcpy(temp+templen, key, KEY_LEN);
 	templen = templen + KEY_LEN;
-	printf("%d:%s",strlen(temp), temp);	
 	ssl = SSL_new(ctx);  CHK_NULL(ssl);
 	if(!ssl){
 		perror("SSL_new");
@@ -249,7 +249,7 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 		cleantcp(ssl,ctx,sock_fd);
 	}
 
-	if(checkCN(ssl) != 1){
+	if(checkCN(ssl,hostname) != 1){
 		printf("Invalid common name.");
 		exit(1);
 		cleantcp(ssl,ctx,sock_fd);
@@ -283,7 +283,7 @@ int main(int argc, char *argv[])
 	int plainlen, cryptlen;
 
 
-        int MODE = 0, TUNMODE = IFF_TUN, DEBUG = 0;
+        int TUNMODE = IFF_TUN, DEBUG = 1;
 
 	plainbuf = malloc(BUFSIZE);
 	cryptbuf = malloc(BUFSIZE);
@@ -358,12 +358,25 @@ int main(int argc, char *argv[])
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 /* Authentication Part*/
+	struct hostent *serverHost;
 
-key = getkey();
-int index;
-for(index=0;index<strlen(key);index++){printf("%02x",key[index]);}
+	if(argc != 3) {
+        	printf("Usage: hostname  username:pwd\n");
+        	exit(1);
+    	}
 
-launchtcp(argv[1], argv[2], caddr,key);
+/* get the host info */
+	if((serverHost=gethostbyname(argv[1])) == NULL) {
+        	herror("gethostbyname(): ");
+       		exit(1);
+    	}
+	ip = inet_ntoa(*((struct in_addr *)serverHost->h_addr));
+
+//int index;
+//for(index=0;index<strlen(key);index++){printf("%02x",key[index]);}
+
+
+launchtcp(ip, argv[1],argv[2], caddr,key);
 
 /*
 ////////////////////////////////////////////////////////////////////////////////////////////
