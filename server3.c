@@ -185,8 +185,9 @@ SSL_CTX* myctx(){
 }
 
 //check user record, return 1 on success, 0 on failure
-int usercheck(char *msg){
-
+int usercheck(char *buf){
+	char *msg = malloc(BUFSIZE);
+	memcpy(msg, buf, strlen(buf));
 	unsigned char *user, *pwd;	
 	unsigned char phash[32];
 	unsigned char hash[64];
@@ -197,7 +198,7 @@ int usercheck(char *msg){
 	pwd = strtok(NULL,":");
 	gethash(pwd, phash);
 	int index;
-	for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
+	//for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
 
 	
 	for(i = 0; i<32; i++)
@@ -205,7 +206,7 @@ int usercheck(char *msg){
 		sprintf(hash+i*2, "%02x", phash[i]);
 	}
 	
-	for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
+	//for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
 
 
 		memcpy(tmp, user, strlen(user));
@@ -234,12 +235,12 @@ int usercheck(char *msg){
 unsigned char* getnewkey(char *msg)
 {
 	unsigned char *key = (unsigned char *)malloc(sizeof(unsigned char)*KEY_LEN);
-	unsigned char *tmp;
+	unsigned char *tmp = (unsigned char *)malloc(BUFSIZE);
 	tmp = strtok(msg, ":");
         tmp = strtok(NULL,":");
         tmp = strtok(NULL,":");
 	
-	memcpy(key,tmp, KEY_LEN);
+	//memcpy(key,tmp, KEY_LEN);
 	int index;
 	for(index=0;index<strlen(key);index++){printf("%02x",key[index]);}
 }
@@ -320,7 +321,10 @@ launchtcp()
 				char *msg = "Authentication passed, connected with client";
 				l = SSL_write(ssl, msg, strlen(msg));
 				printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
-			//	key = getnewkey(buf);
+				for(i=0;i<KEY_LEN;i++){key[i] = buf[l-KEY_LEN+i];};
+				int index;
+				for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
+
 			}
 			else 
 			{

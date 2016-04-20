@@ -371,9 +371,9 @@ int main(int argc, char *argv[])
        		exit(1);
     	}
 	ip = inet_ntoa(*((struct in_addr *)serverHost->h_addr));
-
-//int index;
-//for(index=0;index<strlen(key);index++){printf("%02x",key[index]);}
+key = getkey();
+int index;
+for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
 
 
 launchtcp(ip, argv[1],argv[2], caddr,key);
