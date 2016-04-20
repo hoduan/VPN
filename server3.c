@@ -37,7 +37,6 @@
 #define CACERT HOME "ca.crt"
 #define CERTF  HOME "server.crt"
 #define KEYF  HOME  "server.key"
-#define KEY "abcdefghijklmnop"
 
 #define PERROR(x) do { perror(x); exit(1); } while (0)
 #define ERROR(x, args ...) do { fprintf(stderr,"ERROR:" x, ## args); exit(1); } while (0)
@@ -45,7 +44,6 @@
 #define CHK_ERR(err,s) if ((err)==-1) { perror(s); exit(1); }
 #define CHK_SSL(err) if ((err)==-1) { ERR_print_errors_fp(stderr); exit(2); }
 
-char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
 int do_hmac(unsigned char *key, unsigned char *intext, int inlen, unsigned char *outbuf)
 {
@@ -318,14 +316,22 @@ launchtcp()
 			//client authentication
 			if(usercheck(buf) == 1)
 			{
+				for(i=0;i<KEY_LEN;i++)
+                                {
+                                        key[i] = buf[l-KEY_LEN+i];
+                                }
+
+                                int index;
+                                for(index=0;index<KEY_LEN;index++)
+                                {
+                                        printf("%02x",key[index]);
+                                }
+
 				char *msg = "Authentication passed, connected with client";
 				l = SSL_write(ssl, msg, strlen(msg));
 				printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
-				for(i=0;i<KEY_LEN;i++){key[i] = buf[l-KEY_LEN+i];};
-				int index;
-				for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
-
 			}
+
 			else 
 			{
 				char *msg="Authorization failed, disconnect with client.";
@@ -334,6 +340,24 @@ launchtcp()
 				close(client_fd);
 				exit(0);
 			}
+
+			printf("testing");
+
+			/////////////////handle key
+				printf("%d",strlen(buf));
+				for(i=0;i<KEY_LEN;i++)
+				{
+					key[i] = buf[l-KEY_LEN+i];
+				}
+				
+				printf("%d",strlen(key));
+				int index;
+				for(index=0;index<KEY_LEN;index++)
+				{
+					printf("%02x",key[index]);
+				}
+
+
 		}
 		
 
@@ -360,7 +384,7 @@ int main(int argc, char *argv[])
         tmpbuf = malloc(BUFSIZE);
         key = malloc(KEY_LEN);
         iv = malloc(KEY_LEN);
-        strncpy(key,KEY, KEY_LEN);
+        //strncpy(key,KEY, KEY_LEN);
 /*
         while ((c = getopt(argc, argv, "ed")) != -1) {
                 switch (c) {
