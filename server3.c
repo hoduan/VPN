@@ -195,14 +195,16 @@ SSL_CTX* myctx(){
 
 int usercheck(char *msg){
 
-	unsigned char *user, *pwd, *port;	
+	unsigned char *user, *pwd;	
 	unsigned char phash[32];
 	unsigned char hash[64];
 	char tmp[BUFSIZE];
 	int i;
 	
 	user = strtok(msg, ":");
+	printf("%d\n", strlen(user));
 	pwd = strtok(NULL,":");
+	printf("\n%s\n", pwd);
 	gethash(pwd, phash);
 	for(i = 0; i<32; i++)
 	{
@@ -219,12 +221,12 @@ int usercheck(char *msg){
 		size_t len;
 		char* line;
 		f = fopen("data.txt", "r");
-		if(f == NULL) {perror("the data file i null, nothing stored there!"); return 0;}
+		if(f == NULL) {perror("the data file is null, nothing stored there!"); return 0;}
 		while((getline(&line, &len, f))!=-1)
 		{
 			if(memcmp(line, tmp, strlen(line)-1) ==0)
 			{	
-				printf("\nuser checked passed!\n");
+				printf("\nAuthorization checking passed!\n");
 				return 1;
 				break;
 			}
@@ -232,6 +234,20 @@ int usercheck(char *msg){
 	return 0;
 	
 }
+
+
+unsigned char* getnewkey(char *msg)
+{
+	unsigned char *key = (unsigned char *)malloc(sizeof(unsigned char)*KEY_LEN);
+	unsigned char *tmp;
+	tmp = strtok(msg, ":");
+        tmp = strtok(NULL,":");
+        key = strtok(NULL,":");
+	
+	int index;
+	for(index=0;index<strlen(key);index++){printf("%02x",key[index]);}
+}
+
 
 launchtcp()
 {
@@ -241,7 +257,8 @@ launchtcp()
 	pid_t child_pid;
 	socklen_t len;
 	unsigned short int port = TCP_PORT;
-	
+	unsigned char *key;
+	key = malloc(KEY_LEN);
 	memset(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -307,6 +324,7 @@ launchtcp()
 				char *msg = "Authentication passed, connected with client";
 				l = SSL_write(ssl, msg, strlen(msg));
 				printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
+				key = getnewkey(buf);
 			}
 			else 
 			{

@@ -1,0 +1,28 @@
+i[04/19/2016 16:36] seed@ubuntu:~/OVPN$ sudo gdb ./client3
+
+  	mssword for seed: 
+GNU gdb (Ubuntu/Linaro 7.4-2012.04-0ubuntu2.1) 7.4-2012.04
+Copyright (C) 2012 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.  Type "show copying"
+and "show warranty" for details.
+This GDB was configured as "i686-linux-gnu".
+For bug reporting instructions, please see:
+<http://bugs.launchpad.net/gdb-linaro/>...
+Reading symbols from /home/seed/OVPN/client3...done.
+(gdb) set args -c 10.0.2.5
+(gdb) set args -c 10.0.2.5:10000
+(gdb) r
+Starting program: /home/seed/OVPN/client3 -c 10.0.2.5:10000
+Allocated interface toto1. Configure and use it
+Initial TCP connection with server.
+CN: ho.duan
+
+common name matches
+1check common name passedConnection with 72.247.255.191:6920 established
+^C
+Program received signal SIGINT, Interrupt.
+0xb7fdd424 in __kernel_vsyscall ()
+(gdb) 
+eth = SSLv23_server_method();

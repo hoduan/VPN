@@ -142,8 +142,8 @@ int checkCN(SSL *ssl)
         char common_name[256];
         X509_NAME_get_text_by_NID(subject, nid_cn, common_name, 256);
         printf("CN: %s\n", common_name);
-        char *servername=SERVERNAME;
-        if(strncmp(common_name, servername, strlen(servername))==0){printf("\ncommon name matches\n");return 1;} 
+        char *servername="ho.duan";
+        if(strncmp(common_name, servername, strlen(servername))==0){return 1;} 
 	else {printf("\ncommon name check failed\n");return 0;}
 
 }
@@ -230,11 +230,12 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	char tempbuf[BUFSIZE];	
 	SSL* ssl;
 	SSL_CTX* ctx = myctx();
-
+	
+	printf("%s\n", credential);
 	templen = sprintf(temp,"%s%s", credential,":");
 	memcpy(temp+templen, key, KEY_LEN);
 	templen = templen + KEY_LEN;
-	
+	printf("%d:%s",strlen(temp), temp);	
 	ssl = SSL_new(ctx);  CHK_NULL(ssl);
 	if(!ssl){
 		perror("SSL_new");
@@ -248,13 +249,11 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 		cleantcp(ssl,ctx,sock_fd);
 	}
 
-	int cn = checkCN(ssl);
-	printf("%d", cn);
-	if(cn != 1){
+	if(checkCN(ssl) != 1){
 		printf("Invalid common name.");
 		exit(1);
 		cleantcp(ssl,ctx,sock_fd);
-	}else {printf("check common name passed");}
+	}
 	
 	l=SSL_write(ssl,temp,templen);
 
@@ -266,7 +265,7 @@ void launchtcp(char *address, char* credential, struct sockaddr_in udpaddr, unsi
 	l = SSL_read(ssl, buf, BUFSIZE);
 	char *msg = "Authorization failed, disconnect with client.";
 	if(memcmp(msg, buf, strlen(msg)) ==0){printf("authorization failed");}
-	else printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
+	else printf("Connection with %s:%i established\n",inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
 
 
 }
@@ -295,8 +294,11 @@ int main(int argc, char *argv[])
 	strncpy(key,KEY, KEY_LEN);
 
 
-	char * credential = "user:userpwd";
-        while ((c = getopt(argc, argv, "c:ehd")) != -1) {
+	char * credential;
+        credential = malloc(12);
+        memcpy(credential, "user:userpwd", 12);
+	printf("%s\n",credential); 
+/*        while ((c = getopt(argc, argv, "c:ehd")) != -1) {
                 switch (c) {
                 case 'h':
                         usage();
@@ -322,6 +324,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (MODE == 0) usage();
+*/
 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -348,7 +351,7 @@ int main(int argc, char *argv[])
 	memset(&caddr,0,sizeof(caddr));
 	caddr.sin_family = AF_INET;
 	caddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	caddr.sin_port = htons(CPORT);
+	caddr.sin_port = htons(PORT);
 	if ( bind(s,(struct sockaddr *)&caddr, sizeof(caddr)) < 0) PERROR("bind");
 	
 	fromlen = sizeof(from);
@@ -357,7 +360,10 @@ int main(int argc, char *argv[])
 /* Authentication Part*/
 
 key = getkey();
-launchtcp(ip, credential, caddr,key);
+int index;
+for(index=0;index<strlen(key);index++){printf("%02x",key[index]);}
+
+launchtcp(argv[1], argv[2], caddr,key);
 
 /*
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -375,8 +381,8 @@ launchtcp(ip, credential, caddr,key);
 	 printf("Connection with %s:%i established\n",inet_ntoa(from.sin_addr), ntohs(from.sin_port));
 */
 //////////////////////////////////////////////////////////////////////////////////////
-/* fetch and send packets */
-
+//fetch and send packets 
+/*
 while(1){
 	
 	FD_ZERO(&fdset);
@@ -433,5 +439,5 @@ while(1){
 	}
 
 }
-
+*/
 }
