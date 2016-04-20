@@ -202,20 +202,26 @@ int usercheck(char *msg){
 	int i;
 	
 	user = strtok(msg, ":");
-	printf("%d\n", strlen(user));
 	pwd = strtok(NULL,":");
 	printf("\n%s\n", pwd);
 	gethash(pwd, phash);
+	int index;
+	for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
+
+	
 	for(i = 0; i<32; i++)
 	{
 		sprintf(hash+i*2, "%02x", phash[i]);
 	}
+	
+	for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
+
 
 		memcpy(tmp, user, strlen(user));
 		memcpy(tmp+strlen(user), " ",1);
 		memcpy(tmp+strlen(user)+1, &hash, 64);
 		memcpy(tmp+strlen(user)+1+64, "\x0a",1);	
-		
+		printf("%s",tmp);
 		FILE *f;
 		//ssize_t read;
 		size_t len;
@@ -242,8 +248,9 @@ unsigned char* getnewkey(char *msg)
 	unsigned char *tmp;
 	tmp = strtok(msg, ":");
         tmp = strtok(NULL,":");
-        key = strtok(NULL,":");
+        tmp = strtok(NULL,":");
 	
+	memcpy(key,tmp, KEY_LEN);
 	int index;
 	for(index=0;index<strlen(key);index++){printf("%02x",key[index]);}
 }
@@ -324,7 +331,7 @@ launchtcp()
 				char *msg = "Authentication passed, connected with client";
 				l = SSL_write(ssl, msg, strlen(msg));
 				printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
-				key = getnewkey(buf);
+			//	key = getnewkey(buf);
 			}
 			else 
 			{

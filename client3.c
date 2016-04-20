@@ -291,13 +291,13 @@ int main(int argc, char *argv[])
 	tmpbuf = malloc(BUFSIZE);
 	key = malloc(KEY_LEN);
 	iv = malloc(KEY_LEN);
-	strncpy(key,KEY, KEY_LEN);
+//	strncpy(key,KEY, KEY_LEN);
 
 
-	char * credential;
-        credential = malloc(12);
-        memcpy(credential, "user:userpwd", 12);
-	printf("%s\n",credential); 
+//	char * credential;
+  //      credential = malloc(12);
+    //    memcpy(credential, "user:userpwd", 12);
+//	printf("%s\n",credential); 
 /*        while ((c = getopt(argc, argv, "c:ehd")) != -1) {
                 switch (c) {
                 case 'h':
