@@ -388,9 +388,9 @@ void launchtcp(char *address, char *hostname, char* credential, unsigned char* k
 	childpid = fork();
 	
 	if(childpid == 0)
-        { launchudp(address, key, fds);}
+        { launchudp(address, key);}
 	
-	else if(pid > 0)
+	else if(childpid > 0)
 	{	
 		while(1)
 		{
@@ -408,7 +408,7 @@ void launchtcp(char *address, char *hostname, char* credential, unsigned char* k
 					if(c == '1')
 					{	close(fds[0]);
 						newkey = getkey();
-						templen = sprintf(temp,"%c%s","1",":");
+						templen = sprintf(temp,"%s%s","1",":");
 						memcpy(temp+templen,newkey,KEY_LEN);
 						templen=templen+KEY_LEN; 
 						l = SSL_write(ssl, temp, templen);
@@ -428,7 +428,7 @@ void launchtcp(char *address, char *hostname, char* credential, unsigned char* k
 				if (l<0)
 				{
 					perror("TCP recerve msg error");
-					cleanuptcp(ssl,ctx,tcp_fd);
+					cleantcp(ssl,ctx,tcp_fd);
 				}
 				if (l > 0 )
 				{
