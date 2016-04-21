@@ -202,7 +202,7 @@ void launchudp(char *address, unsigned char *key)
 {
 	struct sockaddr_in caddr,sin, sout, from;
         struct ifreq ifr;
-        int fd, s, fromlen, soutlen,l;
+        int fd, s, fromlen, soutlen=sizeof(sout),l;
         char c, *p, *ip;
 	unsigned char *plainbuf, *cryptbuf, *hmacbuf, *tmpbuf;
 	unsigned char *iv;
@@ -217,6 +217,7 @@ void launchudp(char *address, unsigned char *key)
 	cryptbuf = malloc(BUFSIZE);
 	hmacbuf = malloc(BUFSIZE);
 	tmpbuf = malloc(BUFSIZE);
+	iv = malloc(KEY_LEN);
 //////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -245,14 +246,11 @@ void launchudp(char *address, unsigned char *key)
 	caddr.sin_port = htons(UDP_PORT);
 	if ( bind(s,(struct sockaddr *)&caddr, sizeof(caddr)) < 0) PERROR("bind");
 	
-	fromlen = sizeof(from);
 
 	from.sin_family = AF_INET;
 	from.sin_port = htons(UDP_PORT);
 	inet_aton(address, &from.sin_addr);
-	l = sendto(s, "Hello", sizeof("Hello"), 0, (struct sockaddr *)&from, fromlen);
-	if(l < 0) PERROR("sendto");
-	
+	fromlen = sizeof(from);	
 
 	while(1){
 	
@@ -290,7 +288,7 @@ void launchudp(char *address, unsigned char *key)
                 if ((sout.sin_addr.s_addr != from.sin_addr.s_addr) || (sout.sin_port != from.sin_port))
                                 printf("Got packet from  %s:%i instead of %s:%i\n",
                                        inet_ntoa(sout.sin_addr), ntohs(sout.sin_port),
-                                       inet_ntoa(sout.sin_addr), ntohs(from.sin_port));
+                                       inet_ntoa(from.sin_addr), ntohs(from.sin_port));
 		
 		
 		memcpy(cryptbuf, buf, l-SHA256_LEN);

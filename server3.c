@@ -279,19 +279,10 @@ void launchudp(struct sockaddr_in caddr,unsigned char *key)
 	memcpy(&from,&caddr,sizeof(caddr));
 	from.sin_port = htons(UDP_PORT);
 	fromlen = sizeof(from);
-	/*while(1)
-	{
-		l = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *)&from, &fromlen);
-	if(l>0) {printf("testing");}	
-	if(l < 0) PERROR("recevfrom");
-		if(strncmp("Hello", buf, sizeof("Hello")) == 0)
-			break;
-	}
 
-	printf("Connection with %s:%i established\n",
-               inet_ntoa(from.sin_addr), ntohs(from.sin_port));
-	*/
-	//////////////////////////////////////////////////////////////////////////////////////////////////
+	printf("from address:  %s:%i",inet_ntoa(from.sin_addr), ntohs(from.sin_port));
+	printf("s address:  %s:%i",inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
+//////////////////////////////////////////////////////////////////////////////////////////////////
 //Send and receive packets	
 	while(1){
 
