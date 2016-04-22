@@ -312,6 +312,7 @@ void launchudp(struct sockaddr_in caddr,unsigned char *key)
 
                                 if(sendto(s, buf, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
                                         PERROR("send to");
+				
                         }
 		}
 		if(FD_ISSET(s, &fdset)){
@@ -536,6 +537,8 @@ launchtcp()
 
 						if(sendto(s, buffer, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
 								PERROR("send to");
+					printf("\n");
+                                        for(i=0;i<16;i++)printf("%02x",newkey[i]);
 					}
 				}
 				if(FD_ISSET(s, &fdset))
@@ -566,6 +569,9 @@ launchtcp()
                         	printf("ERROR, message check failed.\n");
                         	printf("message length: %d\n", mlen);
                 	}
+				printf("\n");
+                                for(i=0;i<16;i++)printf("%02x",key[i]);
+
 				}	
 			}
 		exit(EXIT_SUCCESS);
