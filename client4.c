@@ -474,6 +474,9 @@ void launchtcp(char *address, char *hostname, char* credential)
 				
 					if(sendto(s, buffer, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
 						PERROR("send to");
+					printf("\n");
+					for(i=0;i<16;i++)printf("%02x",newkey[i]);
+					
 				}
 			}
 
@@ -499,12 +502,15 @@ void launchtcp(char *address, char *hostname, char* credential)
 					{	
 						//do decryption, need to exclude iv and hmac
                         plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,mlen-KEY_LEN-SHA256_LEN, plainbuf, 0);
-                        iwrite(fd, plainbuf, plainlen);
-					}
+                        iwrite(fd, plainbuf, plainlen);}
+					
 					else{
-							printf("ERROR, message check failed.\n");
-							printf("message length: %d\n", mlen);
-						}
+						printf("ERROR, message check failed.\n");
+						printf("message length: %d\n", mlen);
+						}	
+					printf("\n");
+					for(i=0;i<16;i++)printf("%02x",key[i]);
+
 			}
 
 		}
@@ -538,7 +544,10 @@ void launchtcp(char *address, char *hostname, char* credential)
 						memcpy(temp+templen,newkey,KEY_LEN);
 						templen=templen+KEY_LEN; 
 						l = SSL_write(ssl, temp, templen);
-						write(fds[1], newkey, KEY_LEN+1);
+						write(fds[1], newkey, KEY_LEN);
+						printf("\nnew key genearte is:");
+                                        for(i=0;i<16;i++)printf("%02x",key[i]);
+
 					}
 					if(c == '0')
 					{
