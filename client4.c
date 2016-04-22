@@ -24,8 +24,7 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#define SERVERNAME "ho.duan"
-#define IF_NAME "toto0"
+#include <fcntl.h>
 #define UDP_PORT 10001
 #define TCP_PORT 10002
 #define BUFSIZE 4096
@@ -389,7 +388,7 @@ void launchtcp(char *address, char *hostname, char* credential)
 	int fds[2];
 	unsigned char *newkey = malloc(KEY_LEN);
 	pid_t childpid;
-	pipe(fds);
+	pipe2(fds,O_NONBLOCK);
 	childpid = fork();
 	memcpy(newkey, key, KEY_LEN);
 	
@@ -452,8 +451,8 @@ void launchtcp(char *address, char *hostname, char* credential)
 			FD_SET(s, &fdset);
 			if (select(fd+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
 			close(fds[1]);
-			nbytes = read(fds[0], tmpkey, sizeof(tmpkey));
-			if(nbytes > 0) memcpy(newkey, tmpkey, KEY_LEN);
+			nbytes = read(fds[0], tmpkey, KEY_LEN);
+			if(nbytes!=-1 && nbytes!=0) memcpy(newkey, tmpkey, KEY_LEN);
 			if (FD_ISSET(fd, &fdset)) {
 				if (DEBUG) write(1,">", 1);
  		                mlen = iread(fd, buffer, sizeof(buffer));
@@ -510,7 +509,7 @@ void launchtcp(char *address, char *hostname, char* credential)
 
 		}
 			
-		
+		exit(EXIT_SUCCESS);
 	
 	}
 	
@@ -570,9 +569,10 @@ void launchtcp(char *address, char *hostname, char* credential)
 				}
 			}
 		}
-		
+	
+	exit(EXIT_SUCCESS);	
 	}
-	else {perror("fork udp tunnle error");}
+	else{perror("fork");exit(EXIT_FAILURE);}
 
 
 }

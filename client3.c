@@ -24,8 +24,6 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#define SERVERNAME "ho.duan"
-#define IF_NAME "toto0"
 #define UDP_PORT 10001
 #define TCP_PORT 10002
 #define BUFSIZE 4096
@@ -44,8 +42,6 @@
 #define CHK_NULL(x) if ((x)==NULL) exit (1)
 #define CHK_ERR(err,s) if ((err)==-1) { perror(s); exit(1); }
 #define CHK_SSL(err) if ((err)==-1) { ERR_print_errors_fp(stderr); exit(2); }
-
-char MAGIC_WORD[] = "Wazaaaaaaaaaaahhhh !";
 
 
 void usage()

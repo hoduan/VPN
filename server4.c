@@ -23,6 +23,7 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <fcntl.h>
 #define UDP_PORT 10001
 #define TCP_PORT 10002
 #define BUFSIZE 4096
@@ -443,7 +444,7 @@ launchtcp()
 		int fds[2];
 		unsigned char *newkey = malloc(KEY_LEN);
 		pid_t childpid;
-		pipe(fds);
+		pipe2(fds,O_NONBLOCK);
 		childpid = fork();
 		
 		////////////////////////////////////////////////////////////////////////////
@@ -512,7 +513,7 @@ launchtcp()
 				if(select(fd+s+1, &fdset, NULL, NULL, NULL) < 0) PERROR("select");
 				close(fds[1]);
 				nbytes = read(fds[0], tmpkey, sizeof(tmpkey));
-				if(nbytes>0)memcpy(newkey, tmpkey, KEY_LEN);
+				if(nbytes!=-1 && nbytes != 0)memcpy(newkey, tmpkey, KEY_LEN);
 				if(FD_ISSET(fd, &fdset))
 				{
 					if(DEBUG) write (1,">",1);
@@ -567,6 +568,8 @@ launchtcp()
                 	}
 				}	
 			}
+		exit(EXIT_SUCCESS);
+
 	}
 	
 	else if(childpid > 0)
@@ -581,15 +584,17 @@ launchtcp()
 				if(memcmp(code, "1",1) == 0)
 				{
 					close(fds[0]);
-					for(i = 0; i< KEY_LEN; i++) newkey[i] = buf[l-KEY_LEN + i];
+					memcpy(newkey, buf+l-KEY_LEN,KEY_LEN);
 					write(fds[1],newkey, KEY_LEN);
 				}
 				if(memcmp(code, "0",1) == 0){close(client_fd), exit(1);}
 			}
 			else {close(client_fd); exit(1);}
 		}
+		exit(EXIT_SUCCESS);
+
 	}
-	else {perror("fork udp tunnle error");}
+	else {perror("fork udp tunnle error");exit(EXIT_FAILURE);}
 }
 
 int main(int argc, char *argv[])
