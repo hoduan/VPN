@@ -401,7 +401,23 @@ launchtcp()
 				if(select(fd+s+1, &fdset, NULL, NULL, NULL) < 0) PERROR("select");
 				close(fds[1]);
 				nbytes = read(fds[0], tmpkey, KEY_LEN);
-				if(nbytes!=-1 && nbytes != 0)memcpy(newkey, tmpkey, KEY_LEN);
+				if(nbytes!=-1 && nbytes != 0)
+				{
+					//update key
+					if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
+					
+					//close connection
+					if(nbytes == 1)
+					{	
+						memset(key,0,KEY_LEN);
+						memset(newkey,0,KEY_LEN);
+						memset(tmpkey,0,KEY_LEN);
+						memset(buffer,0,BUFSIZE);
+						close(fd);
+						close(s);
+						exit(0);
+					}
+				}
 				if(FD_ISSET(fd, &fdset))
 				{
 					if(DEBUG) write (1,">",1);
@@ -480,6 +496,8 @@ launchtcp()
 					write(fds[1],buf+2, KEY_LEN);
 				}
 				if(memcmp(code, "0",1) == 0){
+					close(fds[0]);
+					write(fds[1],'0',1);
 				close(client_fd), exit(1);}
 			}
 			else {close(client_fd); exit(1);}
