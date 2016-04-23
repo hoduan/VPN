@@ -196,119 +196,6 @@ void cleanudp(int fd, int s)
 	exit(1);
 }
 
-void launchudp(char *address, unsigned char *key)
-{
-	struct sockaddr_in caddr, sout, from;
-    struct ifreq ifr;
-    int fd, s, fromlen, soutlen=sizeof(sout),l;
-    char c, *p, *ip;
-	unsigned char *plainbuf, *cryptbuf, *hmacbuf, *tmpbuf;
-	unsigned char *iv;
-    fd_set fdset;
-	char buf[BUFSIZE];
-	int plainlen, cryptlen;
-	int TUNMODE = IFF_TUN, DEBUG = 1;
-
-	plainbuf = malloc(BUFSIZE);
-	cryptbuf = malloc(BUFSIZE);
-	hmacbuf = malloc(BUFSIZE);
-	tmpbuf = malloc(BUFSIZE);
-	iv = malloc(KEY_LEN);
-//////////////////////////////////////////////////////////////////////////////////
-
-///////////////////////////////////////////////////////////////////////////////////////////
-//allocate tun/tap interface 
-//dev name is toto0 if you are the first one to connect
-
-        if ( (fd = open("/dev/net/tun",O_RDWR)) < 0) PERROR("open");
-
-        memset(&ifr, 0, sizeof(ifr));
-        ifr.ifr_flags = TUNMODE;
-        strncpy(ifr.ifr_name, "toto%d", IFNAMSIZ);
-        if (ioctl(fd, TUNSETIFF, (void *)&ifr) < 0) PERROR("ioctl");
-
-	 printf("Allocated interface %s. Configure and use it\n", ifr.ifr_name);
-	
-	if ( (s=socket(PF_INET, SOCK_DGRAM, 0))<0 )
-	{
-		perror("UDP: socket()");
-		close(fd);
-		close(s);
-	}
-	
-	memset(&caddr,0,sizeof(caddr));
-	caddr.sin_family = AF_INET;
-	caddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	caddr.sin_port = htons(UDP_PORT);
-	if ( bind(s,(struct sockaddr *)&caddr, sizeof(caddr)) < 0) PERROR("bind");
-	
-
-	from.sin_family = AF_INET;
-	from.sin_port = htons(UDP_PORT);
-	inet_aton(address, &from.sin_addr);
-	fromlen = sizeof(from);	
-
-	while(1){
-	
-		FD_ZERO(&fdset);
-		FD_SET(fd, &fdset);
-		FD_SET(s, &fdset);
-		if (select(fd+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
-        	if (FD_ISSET(fd, &fdset)) {
-                        if (DEBUG) write(1,">", 1);
-                        l = iread(fd, buf, sizeof(buf));
-			if( l != -1)
-			{	//do encryption
-				iv = getkey();
-				cryptlen = do_crypt(key, iv, buf, l, cryptbuf, 1);
-				memcpy(tmpbuf,iv,KEY_LEN);
-				memcpy(tmpbuf+KEY_LEN, cryptbuf, cryptlen);
-				
-				//hmac inclued iv + encrypted data
-				do_hmac(key,tmpbuf,KEY_LEN+cryptlen,hmacbuf);
-					
-				//copy iv, encrypted data and hmac into buf and then send
-				memcpy(buf, iv, KEY_LEN);
-				memcpy(buf+KEY_LEN, cryptbuf, cryptlen);
-				memcpy(buf+KEY_LEN+cryptlen, hmacbuf, SHA256_LEN);
-				int buflen = KEY_LEN + cryptlen + SHA256_LEN;
-				
-				if(sendto(s, buf, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
-					PERROR("send to");
-			}
-	}
-
-	if(FD_ISSET(s, &fdset)){
-		if (DEBUG) write(1,"<", 1);
-                l = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *)&sout, &soutlen);
-                if ((sout.sin_addr.s_addr != from.sin_addr.s_addr) || (sout.sin_port != from.sin_port))
-                                printf("Got packet from  %s:%i instead of %s:%i\n",
-                                       inet_ntoa(sout.sin_addr), ntohs(sout.sin_port),
-                                       inet_ntoa(from.sin_addr), ntohs(from.sin_port));
-		
-		
-		memcpy(cryptbuf, buf, l-SHA256_LEN);
-		memcpy(iv, buf, KEY_LEN);
-		// do hmac to check the signature, if matches, decrypt the data
-		do_hmac(key,cryptbuf,l-SHA256_LEN,hmacbuf);
-		if (memcmp(hmacbuf, buf+l-SHA256_LEN, SHA256_LEN) == 0 && l!= -1)
-		{	
-			//do decryption, need to exclude iv and hmac
-                        plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,l-KEY_LEN-SHA256_LEN, plainbuf, 0);
-                        iwrite(fd, plainbuf, plainlen);
-		}
-		else{
-			printf("ERROR, message check failed.\n");
-			printf("message length: %d\n", l);
-		}
-	}
-
-}
-
-
-
-
-}
 
 void launchtcp(char *address, char *hostname, char* credential)
 {
@@ -443,7 +330,6 @@ void launchtcp(char *address, char *hostname, char* credential)
 		from.sin_port = htons(UDP_PORT);
 		inet_aton(address, &from.sin_addr);
 		fromlen = sizeof(from);	
-
 		while(1){
 		
 			FD_ZERO(&fdset);
@@ -459,12 +345,12 @@ void launchtcp(char *address, char *hostname, char* credential)
 				if( mlen != -1)
 				{	//do encryption
 					iv = getkey();
-					cryptlen = do_crypt(newkey, iv, buffer, mlen, cryptbuf, 1);
+					cryptlen = do_crypt(key, iv, buffer, mlen, cryptbuf, 1);
 					memcpy(tmpbuf,iv,KEY_LEN);
 					memcpy(tmpbuf+KEY_LEN, cryptbuf, cryptlen);
 				
 					//hmac inclued iv + encrypted data
-					do_hmac(newkey,tmpbuf,KEY_LEN+cryptlen,hmacbuf);
+					do_hmac(key,tmpbuf,KEY_LEN+cryptlen,hmacbuf);
 					
 					//copy iv, encrypted data and hmac into buffer and then send
 					memcpy(buffer, iv, KEY_LEN);
@@ -474,19 +360,16 @@ void launchtcp(char *address, char *hostname, char* credential)
 				
 					if(sendto(s, buffer, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
 						PERROR("send to");
-					printf("\n");
-					for(i=0;i<16;i++)printf("%02x",newkey[i]);
-					
 				}
 			}
 
 			if(FD_ISSET(s, &fdset)){
 				if (DEBUG) write(1,"<", 1);
                 mlen = recvfrom(s, buffer, sizeof(buffer), 0, (struct sockaddr *)&sout, &soutlen);
-                if ((sout.sin_addr.s_addr != from.sin_addr.s_addr) || (sout.sin_port != from.sin_port))
+               /* if ((sout.sin_addr.s_addr != from.sin_addr.s_addr) || (sout.sin_port != from.sin_port))
                     printf("Got packet from  %s:%i instead of %s:%i\n",
                     inet_ntoa(sout.sin_addr), ntohs(sout.sin_port),
-                    inet_ntoa(from.sin_addr), ntohs(from.sin_port));
+                    inet_ntoa(from.sin_addr), ntohs(from.sin_port));*/
 		
 					memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
 					memcpy(iv, buffer, KEY_LEN);
@@ -497,6 +380,9 @@ void launchtcp(char *address, char *hostname, char* credential)
 					{	
 						memcpy(key, newkey, KEY_LEN);
 						do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+						printf("\nupdated key in client:");
+						for(i=0;i<16;i++) printf("%02x",key[i]);
+						printf("\n");
 					}
 					if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
 					{	
@@ -508,8 +394,6 @@ void launchtcp(char *address, char *hostname, char* credential)
 						printf("ERROR, message check failed.\n");
 						printf("message length: %d\n", mlen);
 						}	
-					printf("\n");
-					for(i=0;i<16;i++)printf("%02x",key[i]);
 
 			}
 
