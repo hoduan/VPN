@@ -338,7 +338,21 @@ void launchtcp(char *address, char *hostname, char* credential)
 			if (select(fd+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
 			close(fds[1]);
 			nbytes = read(fds[0], tmpkey, KEY_LEN);
-			if(nbytes!=-1 && nbytes!=0) memcpy(newkey, tmpkey, KEY_LEN);
+			if(nbytes!=-1 && nbytes!=0)
+			{ 
+				//update key
+				if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
+				close connection
+				if(nbytes == 1)
+				{
+					memset(key,0, KEY_LEN);
+					memset(newkey,0,KEY_LEN);
+					memset(tmpkey,0,KEY_LEN);
+					memset(buffer,0, BUFSIZE);
+					close(fd);
+					close(s);
+				}
+			}
 			if (FD_ISSET(fd, &fdset)) {
 				if (DEBUG) write(1,">", 1);
  		                mlen = iread(fd, buffer, sizeof(buffer));
@@ -434,7 +448,10 @@ void launchtcp(char *address, char *hostname, char* credential)
 
 					}
 					if(c == '0')
-					{
+					{	
+						close(fds[0]);
+						l= SSL_write(ssl,'0',1);
+						write(fds[1],"0:0",1);
 						cleantcp(ssl, ctx, tcp_fd);
 					}
 				}
