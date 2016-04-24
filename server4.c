@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <openssl/evp.h>
 #include <sys/ipc.h>
+#include <sys/wait.h>
 #include <sys/select.h>
 #include <mqueue.h>
 #include <errno.h>
@@ -328,12 +329,14 @@ launchtcp()
 			}
 
 		}
-
+		
+		memset(buf,0,BUFSIZE);
 		unsigned char *code;
 		char buftemp[BUFSIZE];
 		int fds[2];
 		unsigned char *newkey = malloc(KEY_LEN);
-		pid_t childpid;
+		pid_t childpid,pid;
+		int status;
 		pipe2(fds,O_NONBLOCK);
 		childpid = fork();
 		
@@ -395,10 +398,6 @@ launchtcp()
 			//Send and receive packets	
 			while(1)
 			{
-				FD_ZERO(&fdset);
-				FD_SET(fd, &fdset);
-				FD_SET(s, &fdset);
-				if(select(fd+s+1, &fdset, NULL, NULL, NULL) < 0) PERROR("select");
 				close(fds[1]);
 				nbytes = read(fds[0], tmpkey, KEY_LEN);
 				if(nbytes!=-1 && nbytes != 0)
@@ -418,6 +417,12 @@ launchtcp()
 						exit(0);
 					}
 				}
+	
+				FD_ZERO(&fdset);
+				FD_SET(fd, &fdset);
+				FD_SET(s, &fdset);
+				if(select(fd+s+1, &fdset, NULL, NULL, NULL) < 0) PERROR("select");
+
 				if(FD_ISSET(fd, &fdset))
 				{
 					if(DEBUG) write (1,">",1);
@@ -497,8 +502,12 @@ launchtcp()
 				}
 				if(memcmp(code, "0",1) == 0){
 					close(fds[0]);
-					write(fds[1],'0',1);
-				close(client_fd), exit(1);}
+					write(fds[1],buf,1);
+					close(client_fd);
+				//	pid = wait(&status);
+					sleep(2); 
+					exit(0);
+				}
 			}
 			else {close(client_fd); exit(1);}
 		}
