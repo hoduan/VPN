@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -15,7 +16,6 @@
 #include <openssl/evp.h>
 #include <sys/ipc.h>
 #include <sys/select.h>
-#include <mqueue.h>
 #include <errno.h>
 #include <netinet/ip.h>
 #include <openssl/hmac.h>
@@ -29,11 +29,8 @@
 #define UDP_PORT 10001
 #define TCP_PORT 10002
 #define BUFSIZE 4096
-#define MSGSIZE 8192
-#define MAX_CONNECTION 10
 #define KEY_LEN 16
 #define SHA256_LEN 32
-#define MAX_COUNT 100
 #define STDIN 0
 #define HOME "./ca/"
 #define CACERT HOME "ca.crt"
@@ -190,7 +187,7 @@ void cleantcp(SSL* ssl, SSL_CTX* ctx, int sock_fd)
 }
 
 
-void launchtcp(char *address, char *hostname, char* credential)
+void launchtcp(char *address, char *hostname)
 {
 	int tcp_fd;
 	int l, i, err;
@@ -200,14 +197,12 @@ void launchtcp(char *address, char *hostname, char* credential)
 	key = malloc(KEY_LEN);
 	key = getkey();
 	int index;
-	//for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
+	for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
 	
 	memset(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = htons(TCP_PORT);
 	inet_aton(address, &saddr.sin_addr);
-	
-	
 
 	// socket
 	if((tcp_fd=socket(AF_INET, SOCK_STREAM, 0)) < 0)
@@ -224,13 +219,8 @@ void launchtcp(char *address, char *hostname, char* credential)
 	// send username password
 	char temp[BUFSIZE];
 	int templen;
-	char tempbuf[BUFSIZE];	
 	SSL* ssl;
 	SSL_CTX* ctx = myctx();
-	
-	templen = sprintf(temp,"%s%s", credential,":");
-	memcpy(temp+templen, key, KEY_LEN);
-	templen = templen + KEY_LEN;
 	ssl = SSL_new(ctx);  CHK_NULL(ssl);
 	if(!ssl){
 		perror("SSL_new");
@@ -251,12 +241,29 @@ void launchtcp(char *address, char *hostname, char* credential)
 		cleantcp(ssl,ctx,tcp_fd);
 		exit(1);
 	}
+
+	
+	unsigned char *username;
+	unsigned char *password;
+	username = malloc(12);
+	password = malloc(30);
+	printf("Please enter your username here:");
+	scanf("%s",username);
+	password =getpass("\nPlese enter your password here:");
+	memcpy(temp,username,strlen(username));
+	memcpy(temp+strlen(username),":",1);
+	memcpy(temp+strlen(username)+1,password,strlen(password));
+	templen = strlen(username) +1 + strlen(password);
+	memcpy(temp+templen,":",1);
+	memcpy(temp+templen+1, key, KEY_LEN);
+	templen = templen +1+ KEY_LEN;
 	
 	l=SSL_write(ssl,temp,templen);
 
 	// clean credential
-	memset(credential, 0, strlen(credential));
-	memset(temp, 0, templen);
+	memset(username, 0, 12);
+	memset(password,0,30);
+	memset(temp, 0, BUFSIZE);
 	
 	l = SSL_read(ssl, buf, BUFSIZE);
 	char *msg = "Authorization failed, disconnect with client.";
@@ -439,12 +446,12 @@ void launchtcp(char *address, char *hostname, char* credential)
 						templen=templen+KEY_LEN; 
 						l = SSL_write(ssl, temp, templen);
 						write(fds[1], newkey, KEY_LEN);
-						printf("\nnew key genearte is:");
-                                        for(i=0;i<16;i++)printf("%02x",key[i]);
-
 					}
 					if(c == '0')
-					{	
+					{
+						memset(key,0,KEY_LEN);
+						memset(newkey,0,KEY_LEN);
+						memset(buf,0,BUFSIZE);	
 						close(fds[0]);
 						l= SSL_write(ssl,"0:0",3);
 						write(fds[1],"0",1);
@@ -462,6 +469,10 @@ void launchtcp(char *address, char *hostname, char* credential)
 				if (l<0)
 				{
 					perror("TCP recerve msg error");
+					memset(key,0,KEY_LEN);
+					memset(newkey,0,KEY_LEN);
+					memset(buf,0,BUFSIZE);	
+					
 					cleantcp(ssl,ctx,tcp_fd);
 					exit(1);
 				}
@@ -474,6 +485,10 @@ void launchtcp(char *address, char *hostname, char* credential)
 				else if (l==0)
 				{
 					printf("Server disconnect\n");
+					memset(key,0,KEY_LEN);
+					memset(newkey,0,KEY_LEN);
+					memset(buf,0,BUFSIZE);	
+					
 					cleantcp(ssl,ctx,tcp_fd);
 					exit(1);
 				}
@@ -492,8 +507,8 @@ int main(int argc, char *argv[])
 	char * ip;
 	struct hostent *serverHost;
 
-	if(argc != 3) {
-        	printf("Usage: hostname  username:pwd\n");
+	if(argc != 2) {
+        	printf("Usage: hostname\n");
         	exit(1);
     	}
 
@@ -504,6 +519,6 @@ int main(int argc, char *argv[])
     	}
 	ip = inet_ntoa(*((struct in_addr *)serverHost->h_addr));
 
-	launchtcp(ip, argv[1],argv[2]);
+	launchtcp(ip, argv[1]);
 
 }
