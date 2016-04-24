@@ -335,7 +335,7 @@ launchtcp()
 		char buftemp[BUFSIZE];
 		int fds[2];
 		unsigned char *newkey = malloc(KEY_LEN);
-		pid_t childpid,pid;
+		pid_t childpid;
 		int status;
 		pipe2(fds,O_NONBLOCK);
 		childpid = fork();
@@ -398,30 +398,35 @@ launchtcp()
 			//Send and receive packets	
 			while(1)
 			{
-				close(fds[1]);
-				nbytes = read(fds[0], tmpkey, KEY_LEN);
-				if(nbytes!=-1 && nbytes != 0)
+				FD_ZERO(&fdset);
+				FD_SET(fd, &fdset);
+				FD_SET(fds[0],&fdset);
+				FD_SET(s, &fdset);
+				if(select(fd+fds[0]+s+1, &fdset, NULL, NULL, NULL) < 0) PERROR("select");
+		
+				if(FD_ISSET(fds[0],&fdset))
 				{
-					//update key
-					if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
+					close(fds[1]);
+					nbytes = read(fds[0], tmpkey, KEY_LEN);
+					if(nbytes!=-1 && nbytes != 0)
+					{
+						//update key
+						if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
 					
-					//close connection
-					if(nbytes == 1)
-					{	
-						memset(key,0,KEY_LEN);
-						memset(newkey,0,KEY_LEN);
-						memset(tmpkey,0,KEY_LEN);
-						memset(buffer,0,BUFSIZE);
-						close(fd);
-						close(s);
-						exit(0);
+						//close connection
+						if(nbytes == 1)
+						{	
+							memset(key,0,KEY_LEN);
+							memset(newkey,0,KEY_LEN);
+							memset(tmpkey,0,KEY_LEN);
+							memset(buffer,0,BUFSIZE);
+							close(fd);
+							close(s);
+							exit(0);
+						}
 					}
 				}
 	
-				FD_ZERO(&fdset);
-				FD_SET(fd, &fdset);
-				FD_SET(s, &fdset);
-				if(select(fd+s+1, &fdset, NULL, NULL, NULL) < 0) PERROR("select");
 
 				if(FD_ISSET(fd, &fdset))
 				{
@@ -451,34 +456,28 @@ launchtcp()
 				{
 					if(DEBUG) write(1,"<",1);
 					mlen = recvfrom(s, buffer, sizeof(buffer),0,(struct sockaddr *)&sout, &soutlen);
-				/*	if((sout.sin_addr.s_addr != from.sin_addr.s_addr) || (sout.sin_port != from.sin_port))
-						printf("Got packet from  %s:%i instead of %s:%i\n",
-                                       inet_ntoa(sout.sin_addr), ntohs(sout.sin_port),
-                                       inet_ntoa(from.sin_addr), ntohs(from.sin_port));*/
-
-                    memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
-                	memcpy(iv, buffer, KEY_LEN);
-                	// do hmac to check the signature, if matches, decrypt the data
-               		do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+                    			memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
+                			memcpy(iv, buffer, KEY_LEN);
+                			// do hmac to check the signature, if matches, decrypt the data
+               				do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
 					if(memcmp(hmacbuf,buffer+mlen-SHA256_LEN, SHA256_LEN) !=0 && memcmp(key, newkey, KEY_LEN)!=0)
 					{
 						memcpy(key, newkey, KEY_LEN);
 						do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
 						printf("\nupdated key in server:");
                                			for(i=0;i<16;i++)printf("%02x",key[i]);
-
-
 					}
-                	if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
-                	{
-                        //do decryption, need to exclude iv and hmac
-                        plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,mlen-KEY_LEN-SHA256_LEN, plainbuf, 0);
-                        iwrite(fd, plainbuf, plainlen);
-                	}
-               		else{
-                        	printf("ERROR, message check failed.\n");
-                        	printf("message length: %d\n", mlen);
-                	}
+                			if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
+                			{
+                        			//do decryption, need to exclude iv and hmac
+                        			plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,mlen-KEY_LEN-SHA256_LEN, plainbuf, 0);
+                        			iwrite(fd, plainbuf, plainlen);
+                			}
+               				else
+					{
+                        			printf("ERROR, message check failed.\n");
+                        			printf("message length: %d\n", mlen);
+                			}
 
 				}	
 			}
@@ -504,8 +503,8 @@ launchtcp()
 					close(fds[0]);
 					write(fds[1],buf,1);
 					close(client_fd);
-				//	pid = wait(&status);
-					sleep(2); 
+					//wait for child process to exit
+					wait(&status);
 					exit(0);
 				}
 			}
