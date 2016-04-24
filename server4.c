@@ -177,45 +177,50 @@ SSL_CTX* myctx(){
 int usercheck(char *buf){
 	char *msg = malloc(BUFSIZE);
 	memcpy(msg, buf, strlen(buf));
-	unsigned char *user, *pwd;	
+	unsigned char *user, *pwd,*tmppwd,*record_u,*record_p;	
 	unsigned char phash[32];
 	unsigned char hash[64];
 	char tmp[BUFSIZE];
 	int i;
+	unsigned char *salt;
+	user = malloc(12);
+	pwd = malloc(30);
+	tmppwd = malloc(30+2*KEY_LEN);
+	record_u = malloc(12);
+	record_p = malloc(30);
+	salt = malloc(2*KEY_LEN);
 	
 	user = strtok(msg, ":");
 	pwd = strtok(NULL,":");
-	gethash(pwd, phash);
-	int index;
-	//for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
-
 	
-	for(i = 0; i<32; i++)
+
+	FILE *f;
+	size_t len;
+	char* line;
+	f = fopen("data.txt", "r");
+	if(f == NULL) {perror("the data file is null, nothing stored there!"); return 0;}
+
+	while((getline(&line,&len,f))!=-1)
 	{
-		sprintf(hash+i*2, "%02x", phash[i]);
-	}
-	
-	//for(index=0;index<strlen(phash);index++){printf("%02x",phash[index]);}
-
-
-		memcpy(tmp, user, strlen(user));
-		memcpy(tmp+strlen(user), ":",1);
-		memcpy(tmp+strlen(user)+1, &hash, 64);
-		memcpy(tmp+strlen(user)+1+64, "\x0a",1); // add a newline character	
-		FILE *f;
-		size_t len;
-		char* line;
-		f = fopen("data.txt", "r");
-		if(f == NULL) {perror("the data file is null, nothing stored there!"); return 0;}
-		while((getline(&line, &len, f))!=-1)
+		record_u = strtok(line,":");
+		if(memcmp(user,record_u,strlen(user)) == 0 && (strlen(user) == strlen(record_u)))
 		{
-			if((memcmp(line, tmp, strlen(tmp)) ==0) && (strlen(tmp) == strlen(line)))
+			salt = strtok(NULL,":");
+			memcpy(tmppwd,salt,2*KEY_LEN);
+			memcpy(tmppwd+2*KEY_LEN,pwd,30);	
+			gethash(tmppwd,phash);
+			for(i=0;i<32;i++)sprintf(hash+i*2,"%02x",phash[i]);
+			record_p =strtok(NULL,":");
+			if(memcmp(hash,record_p,2*SHA256_LEN) == 0)
 			{
 				printf("\nAuthorization checking passed!\n");
 				return 1;
-				break;
 			}
-		}
+		
+	
+				
+		}		
+	}
 	return 0;
 	
 }
@@ -306,12 +311,6 @@ launchtcp()
 				for(i=0;i<KEY_LEN;i++)
                                 {
                                         key[i] = buf[l-KEY_LEN+i];
-                                }
-
-                                int index;
-                                for(index=0;index<KEY_LEN;index++)
-                                {
-                                        printf("%02x",key[index]);
                                 }
 
 				char *msg = "Authentication passed, connected with client";
