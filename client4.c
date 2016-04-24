@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <openssl/evp.h>
 #include <sys/ipc.h>
 #include <sys/select.h>
@@ -186,14 +187,6 @@ void cleantcp(SSL* ssl, SSL_CTX* ctx, int sock_fd)
 	if(sock_fd!=-1) close(sock_fd);
 	if(ssl!=NULL) SSL_free(ssl);
 	if(ctx!=NULL) SSL_CTX_free(ctx);
-	exit(1);
-}
-
-void cleanudp(int fd, int s)
-{
-	if (fd!=-1) close(fd);
-	if (s!=-1) close(s);
-	exit(1);
 }
 
 
@@ -220,13 +213,11 @@ void launchtcp(char *address, char *hostname, char* credential)
 	if((tcp_fd=socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
 		perror("socket() error!");
-		//cleanuptcp(NULL,NULL,sock_fd,mq_fd,mq_fd_tcp,1);
 	}
 	// connect
 	if( (connect(tcp_fd, (struct sockaddr*) &saddr, sizeof(struct sockaddr))) <0 )
 	{
 		perror("connect() error!");
-		//cleanuptcp(NULL,NULL,sock_fd,mq_fd,mq_fd_tcp,1);
 	}
 	printf("Initial TCP connection with server.\n");
 	
@@ -244,6 +235,7 @@ void launchtcp(char *address, char *hostname, char* credential)
 	if(!ssl){
 		perror("SSL_new");
 		cleantcp(ssl,ctx,tcp_fd);
+		exit(1);
 	}
 	SSL_set_fd(ssl,tcp_fd);	
 	
@@ -251,24 +243,24 @@ void launchtcp(char *address, char *hostname, char* credential)
 	if(err != 1) {
 		perror("ssl_connect");
 		cleantcp(ssl,ctx,tcp_fd);
+		exit(1);
 	}
 
 	if(checkCN(ssl,hostname) != 1){
 		printf("Invalid common name.");
-		exit(1);
 		cleantcp(ssl,ctx,tcp_fd);
+		exit(1);
 	}
 	
 	l=SSL_write(ssl,temp,templen);
 
-	// clean credential, key, iv
+	// clean credential
 	memset(credential, 0, strlen(credential));
 	memset(temp, 0, templen);
-	//memset(key, 0, KEY_LEN);
 	
 	l = SSL_read(ssl, buf, BUFSIZE);
 	char *msg = "Authorization failed, disconnect with client.";
-	if(memcmp(msg, buf, strlen(msg)) ==0){printf("\nAuthorization failed\n");exit(1);}
+	if(memcmp(msg, buf, strlen(msg)) ==0){printf("\nAuthorization failed\n");cleantcp(ssl,ctx, tcp_fd);exit(1);}
 	else printf("Connection with %s:%i established\n",inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
 	
 	int c;
@@ -277,12 +269,15 @@ void launchtcp(char *address, char *hostname, char* credential)
 	pid_t childpid;
 	pipe2(fds,O_NONBLOCK);
 	childpid = fork();
+	int status;
 	memcpy(newkey, key, KEY_LEN);
 	
 	////////////////////////////////////////////////////////////////////////////
 	//UDP data tunnle
 	if(childpid == 0)
-    {
+    	{	
+		cleantcp(ssl,ctx, tcp_fd);
+		
 		struct ifreq ifr;
 		int fd, s, fromlen, soutlen=sizeof(sout),mlen;
 		unsigned char *plainbuf, *cryptbuf, *hmacbuf, *tmpbuf;
@@ -334,24 +329,29 @@ void launchtcp(char *address, char *hostname, char* credential)
 		
 			FD_ZERO(&fdset);
 			FD_SET(fd, &fdset);
+			FD_SET(fds, &fdset);
 			FD_SET(s, &fdset);
-			if (select(fd+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
-			close(fds[1]);
-			nbytes = read(fds[0], tmpkey, KEY_LEN);
-			if(nbytes!=-1 && nbytes!=0)
-			{ 
-				//update key
-				if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
-				close connection
-				if(nbytes == 1)
-				{
-					memset(key,0, KEY_LEN);
-					memset(newkey,0,KEY_LEN);
-					memset(tmpkey,0,KEY_LEN);
-					memset(buffer,0, BUFSIZE);
-					close(fd);
-					close(s);
-				}
+			if (select(fd+fds+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
+			if (FD_ISSET(fds, &fdset)) {
+			    close(fds[1]);
+			    nbytes = read(fds[0], tmpkey, KEY_LEN);
+			    if(nbytes!=-1 && nbytes!=0)
+			    { 
+			    	//update key
+			    	if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
+			    	//close connection
+			    	if(nbytes == 1)
+			    	{
+			    		memset(key,0, KEY_LEN);
+			    		memset(newkey,0,KEY_LEN);
+			    		memset(tmpkey,0,KEY_LEN);
+			    		memset(buffer,0, BUFSIZE);
+			    		close(fd);
+			    		close(s);
+			    		exit(0);
+			    	}
+			    }
+				
 			}
 			if (FD_ISSET(fd, &fdset)) {
 				if (DEBUG) write(1,">", 1);
@@ -450,9 +450,11 @@ void launchtcp(char *address, char *hostname, char* credential)
 					if(c == '0')
 					{	
 						close(fds[0]);
-						l= SSL_write(ssl,'0',1);
-						write(fds[1],"0:0",1);
+						l= SSL_write(ssl,"0:0",3);
+						write(fds[1],"0",1);
 						cleantcp(ssl, ctx, tcp_fd);
+						wait(&status);
+						exit(0);
 					}
 				}
 			}
@@ -465,6 +467,7 @@ void launchtcp(char *address, char *hostname, char* credential)
 				{
 					perror("TCP recerve msg error");
 					cleantcp(ssl,ctx,tcp_fd);
+					exit(1);
 				}
 				if (l > 0 )
 				{
@@ -476,6 +479,7 @@ void launchtcp(char *address, char *hostname, char* credential)
 				{
 					printf("Server disconnect\n");
 					cleantcp(ssl,ctx,tcp_fd);
+					exit(1);
 				}
 			}
 		}
