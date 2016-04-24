@@ -28,11 +28,8 @@
 #define UDP_PORT 10001
 #define TCP_PORT 10002
 #define BUFSIZE 4096
-#define MSGSIZE 8192
-#define MAX_CONNECTION 10
 #define KEY_LEN 16
 #define SHA256_LEN 32
-#define MAX_COUNT 100
 #define HOME "./ca/"
 #define CACERT HOME "ca.crt"
 #define CERTF  HOME "server.crt"
@@ -313,6 +310,9 @@ launchtcp()
                                         key[i] = buf[l-KEY_LEN+i];
                                 }
 
+				int index;
+				for(index=0;index<16;index++)printf("%02x",key[index]);
+
 				char *msg = "Authentication passed, connected with client";
 				l = SSL_write(ssl, msg, strlen(msg));
 				printf("Connection with %s:%i established\n",inet_ntoa(caddr.sin_addr), ntohs(caddr.sin_port));
@@ -486,6 +486,9 @@ launchtcp()
 	
 	else if(childpid > 0)
 	{	
+		memset(key,0,KEY_LEN);
+		memset(newkey,0,KEY_LEN);
+		
 		while(1)
 		{
 			l = SSL_read(ssl, buf, BUFSIZE);
@@ -497,12 +500,16 @@ launchtcp()
 				{
 					close(fds[0]);
 					write(fds[1],buf+2, KEY_LEN);
+				
 				}
+
+				//close connection
 				if(memcmp(code, "0",1) == 0){
 					close(fds[0]);
 					write(fds[1],buf,1);
 					close(client_fd);
-					//wait for child process to exit
+					memset(buf,0,BUFSIZE);
+				//wait for child process to exit
 					wait(&status);
 					exit(0);
 				}
