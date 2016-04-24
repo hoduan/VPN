@@ -200,7 +200,7 @@ void launchtcp(char *address, char *hostname, char* credential)
 	key = malloc(KEY_LEN);
 	key = getkey();
 	int index;
-	for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
+	//for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
 	
 	memset(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
@@ -329,10 +329,10 @@ void launchtcp(char *address, char *hostname, char* credential)
 		
 			FD_ZERO(&fdset);
 			FD_SET(fd, &fdset);
-			FD_SET(fds, &fdset);
+			FD_SET(fds[0], &fdset);
 			FD_SET(s, &fdset);
-			if (select(fd+fds+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
-			if (FD_ISSET(fds, &fdset)) {
+			if (select(fd+fds[0]+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
+			if (FD_ISSET(fds[0], &fdset)) {
 			    close(fds[1]);
 			    nbytes = read(fds[0], tmpkey, KEY_LEN);
 			    if(nbytes!=-1 && nbytes!=0)
@@ -379,35 +379,31 @@ void launchtcp(char *address, char *hostname, char* credential)
 
 			if(FD_ISSET(s, &fdset)){
 				if (DEBUG) write(1,"<", 1);
-                mlen = recvfrom(s, buffer, sizeof(buffer), 0, (struct sockaddr *)&sout, &soutlen);
-               /* if ((sout.sin_addr.s_addr != from.sin_addr.s_addr) || (sout.sin_port != from.sin_port))
-                    printf("Got packet from  %s:%i instead of %s:%i\n",
-                    inet_ntoa(sout.sin_addr), ntohs(sout.sin_port),
-                    inet_ntoa(from.sin_addr), ntohs(from.sin_port));*/
-		
-					memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
-					memcpy(iv, buffer, KEY_LEN);
-					// do hmac to check the signature, if matches, decrypt the data
+		                mlen = recvfrom(s, buffer, sizeof(buffer), 0, (struct sockaddr *)&sout, &soutlen);
+				memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
+				memcpy(iv, buffer, KEY_LEN);
+				// do hmac to check the signature, if matches, decrypt the data
+				do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+				//change key
+				if(memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) !=0 && memcmp(key, newkey, KEY_LEN)!=0)
+				{	
+					memcpy(key, newkey, KEY_LEN);
 					do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
-					//change key
-					if(memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) !=0 && memcmp(key, newkey, KEY_LEN)!=0)
-					{	
-						memcpy(key, newkey, KEY_LEN);
-						do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
-						printf("\nupdated key in client:");
-						for(i=0;i<16;i++) printf("%02x",key[i]);
-						printf("\n");
-					}
-					if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
-					{	
-						//do decryption, need to exclude iv and hmac
-                        plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,mlen-KEY_LEN-SHA256_LEN, plainbuf, 0);
-                        iwrite(fd, plainbuf, plainlen);}
+					printf("\nupdated key in client:");
+					for(i=0;i<16;i++) printf("%02x",key[i]);
+					printf("\n");
+				}
+				if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
+				{	
+					//do decryption, need to exclude iv and hmac
+                        		plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,mlen-KEY_LEN-SHA256_LEN, plainbuf, 0);
+                        		iwrite(fd, plainbuf, plainlen);
+				}
 					
-					else{
-						printf("ERROR, message check failed.\n");
-						printf("message length: %d\n", mlen);
-						}	
+				else{
+					printf("ERROR, message check failed.\n");
+					printf("message length: %d\n", mlen);
+				}	
 
 			}
 
