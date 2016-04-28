@@ -175,8 +175,8 @@ int usercheck(char *buf){
 	char *msg = malloc(BUFSIZE);
 	memcpy(msg, buf, strlen(buf));
 	unsigned char *user, *pwd,*tmppwd,*record_u,*record_p;	
-	unsigned char phash[32];
-	unsigned char hash[64];
+	unsigned char phash[SHA256_LEN];
+	unsigned char hash[2*SHA256_LEN];
 	char tmp[BUFSIZE];
 	int i;
 	unsigned char *salt;
@@ -184,7 +184,7 @@ int usercheck(char *buf){
 	pwd = malloc(30);
 	tmppwd = malloc(30+2*KEY_LEN);
 	record_u = malloc(12);
-	record_p = malloc(30);
+	record_p = malloc(2*SHA256_LEN);
 	salt = malloc(2*KEY_LEN);
 	
 	user = strtok(msg, ":");
@@ -211,6 +211,14 @@ int usercheck(char *buf){
 			if(memcmp(hash,record_p,2*SHA256_LEN) == 0)
 			{
 				printf("\nAuthorization checking passed!\n");
+				memset(user,0,12);
+				memset(pwd,0,30);
+				memset(tmppwd,0,30+2*KEY_LEN);
+				memset(record_u,0,12);
+				memset(record_p,0,2*SHA256_LEN);
+				memset(hash,0,2*SHA256_LEN);
+				memset(phash,0,SHA256_LEN);
+				
 				return 1;
 			}
 		
@@ -218,6 +226,16 @@ int usercheck(char *buf){
 				
 		}		
 	}
+		
+	memset(user,0,12);
+	memset(pwd,0,30);
+	memset(tmppwd,0,30+2*KEY_LEN);
+	memset(record_u,0,12);
+	memset(record_p,0,2*SHA256_LEN);
+	memset(hash,0,2*SHA256_LEN);
+	memset(phash,0,SHA256_LEN);
+					
+	
 	return 0;
 	
 }
