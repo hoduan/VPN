@@ -34,8 +34,6 @@
 #define STDIN 0
 #define HOME "./ca/"
 #define CACERT HOME "ca.crt"
-#define CERTF  HOME "server.crt"
-#define KEYF  HOME  "server.key"
 
 #define PERROR(x) do { perror(x); exit(1); } while (0)
 #define ERROR(x, args ...) do { fprintf(stderr,"ERROR:" x, ## args); exit(1); } while (0)
@@ -46,7 +44,7 @@
 
 void usage()
 {
-        fprintf(stderr, "Usage: client [targethostname] [username:pwd]\n");
+        fprintf(stderr, "Usage: client [targethostname]\n");
         exit(0);
 }
 
@@ -80,7 +78,7 @@ do_crypt(unsigned char *key, unsigned char *iv, unsigned char* intext, int inlen
 		perror("EVP_CipherUpdate");
 	}
 	if(!EVP_CipherFinal_ex(&ctx, outbuf+outlen, &templen)){
-		//perror("EVP_CipherFinal_ex");
+		perror("EVP_CipherFinal_ex");
 	}
 	outlen=outlen+templen;
 	EVP_CIPHER_CTX_cleanup(&ctx);
@@ -425,6 +423,7 @@ void launchtcp(char *address, char *hostname)
 	//TCP tunnle control
 	else if(childpid > 0)
 	{	
+		memset(key,0,KEY_LEN);
 		while(1)
 		{
 			fd_set tcp_set;
