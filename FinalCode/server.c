@@ -328,8 +328,8 @@ launchtcp()
                                         key[i] = buf[l-KEY_LEN+i];
                                 }
 
-				int index;
-				for(index=0;index<16;index++)printf("%02x",key[index]);
+				//int index;
+				//for(index=0;index<16;index++)printf("%02x",key[index]);
 
 				char *msg = "Authentication passed, connected with client";
 				l = SSL_write(ssl, msg, strlen(msg));
@@ -370,7 +370,9 @@ launchtcp()
 			int plainlen, cryptlen, nbytes;
 			fd_set fdset;
 
-			int MODE = 0, TUNMODE = IFF_TUN, DEBUG = 1;
+			int MODE = 0, TUNMODE = IFF_TUN, DEBUG = 0;
+			int seq = rand()%100+10;
+			int curr_seq = 0;
 
 			plainbuf = malloc(BUFSIZE);
 			cryptbuf = malloc(BUFSIZE);
@@ -453,48 +455,95 @@ launchtcp()
 					{       //do encryption
 						iv = getkey();
 						cryptlen = do_crypt(newkey, iv, buffer, mlen, cryptbuf, 1);
-						memcpy(tmpbuf,iv,KEY_LEN);
-						memcpy(tmpbuf+KEY_LEN, cryptbuf, cryptlen);
+	                                        char tmp_seq[8]={0,0,0,0,0,0,0,0};
+        	                                snprintf(tmp_seq, 8, "%d", seq); 
+						memcpy(tmpbuf, tmp_seq,8);
+						memcpy(tmpbuf+8,iv,KEY_LEN);
+						memcpy(tmpbuf+8+KEY_LEN, cryptbuf, cryptlen);
 
-						//hmac inclued iv + encrypted data
-						do_hmac(newkey,tmpbuf,KEY_LEN+cryptlen,hmacbuf);
-
+						//hmac inclued seq,iv + encrypted data
+						do_hmac(newkey,tmpbuf,8+KEY_LEN+cryptlen,hmacbuf);
+						
 						//copy iv, encrypted data and hmac into buffer and then send
-						memcpy(buffer, iv, KEY_LEN);
-						memcpy(buffer+KEY_LEN, cryptbuf, cryptlen);
-						memcpy(buffer+KEY_LEN+cryptlen, hmacbuf, SHA256_LEN);
-						int buflen = KEY_LEN + cryptlen + SHA256_LEN;
+						memcpy(buffer, tmp_seq, 8);
+						memcpy(buffer+8, iv, KEY_LEN);
+						memcpy(buffer+8+KEY_LEN, cryptbuf, cryptlen);
+						memcpy(buffer+8+KEY_LEN+cryptlen, hmacbuf, SHA256_LEN);
+						int buflen = 8+KEY_LEN + cryptlen + SHA256_LEN;
 
 						if(sendto(s, buffer, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
 								PERROR("send to");
+						seq++;
 					}
 				}
 				if(FD_ISSET(s, &fdset))
 				{
+					int seq_tmp;
+					char s_tmp[8];
 					if(DEBUG) write(1,"<",1);
 					mlen = recvfrom(s, buffer, sizeof(buffer),0,(struct sockaddr *)&sout, &soutlen);
-                    			memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
-                			memcpy(iv, buffer, KEY_LEN);
-                			// do hmac to check the signature, if matches, decrypt the data
-               				do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
-					if(memcmp(hmacbuf,buffer+mlen-SHA256_LEN, SHA256_LEN) !=0 && memcmp(key, newkey, KEY_LEN)!=0)
+					memcpy(s_tmp,buffer,8);
+					seq_tmp = atoi(s_tmp);
+					if(curr_seq == 0)
 					{
-						memcpy(key, newkey, KEY_LEN);
-						do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
-						printf("\nupdated key in server:");
-                               			for(i=0;i<16;i++)printf("%02x",key[i]);
+						memcpy(cryptbuf, buffer,mlen-SHA256_LEN);
+                				memcpy(iv, buffer+8, KEY_LEN);
+                				// do hmac to check the signature, if matches, decrypt the data
+               					do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+						if(memcmp(hmacbuf,buffer+mlen-SHA256_LEN, SHA256_LEN) !=0 && memcmp(key, newkey, KEY_LEN)!=0)
+						{
+							memcpy(key, newkey, KEY_LEN);
+							do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+							printf("\nupdated key in server:");
+                               				for(i=0;i<16;i++)printf("%02x",key[i]);
+						}
+                				if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
+                				{
+                        				//do decryption, need to exclude iv and hmac
+                        				plainlen = do_crypt(key, iv,cryptbuf+8+KEY_LEN,mlen-8-KEY_LEN-SHA256_LEN, plainbuf, 0);
+                        				iwrite(fd, plainbuf, plainlen);
+							curr_seq = seq_tmp;
+                				}
+               					else
+						{
+                        				printf("ERROR, message check failed.\n");
+                        				printf("message length: %d\n", mlen);
+                				}
+
+					
 					}
-                			if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
-                			{
-                        			//do decryption, need to exclude iv and hmac
-                        			plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,mlen-KEY_LEN-SHA256_LEN, plainbuf, 0);
-                        			iwrite(fd, plainbuf, plainlen);
-                			}
-               				else
+					else if(seq_tmp != curr_seq)
+					//else if((curr_seq - 500) < seq_tmp && seq_tmp < (curr_seq + 500) && seq_tmp != curr_seq)
 					{
-                        			printf("ERROR, message check failed.\n");
-                        			printf("message length: %d\n", mlen);
-                			}
+                    				memcpy(cryptbuf, buffer,mlen-SHA256_LEN);
+                				memcpy(iv, buffer+8, KEY_LEN);
+                				// do hmac to check the signature, if matches, decrypt the data
+               					do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+						if(memcmp(hmacbuf,buffer+mlen-SHA256_LEN, SHA256_LEN) !=0 && memcmp(key, newkey, KEY_LEN)!=0)
+						{
+							memcpy(key, newkey, KEY_LEN);
+							do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+							printf("\nupdated key in server:");
+                               				for(i=0;i<16;i++)printf("%02x",key[i]);
+						}
+                				if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
+                				{
+                        				//do decryption, need to exclude iv and hmac
+                        				plainlen = do_crypt(key, iv,cryptbuf+8+KEY_LEN,mlen-8-KEY_LEN-SHA256_LEN, plainbuf, 0);
+                        				iwrite(fd, plainbuf, plainlen);
+							curr_seq = seq_tmp;
+                				}
+               					else
+						{
+                        				printf("ERROR, message check failed.\n");
+                        				printf("message length: %d\n", mlen);
+                				}
+					}
+					else
+					{
+						printf("sequence number check failed and packet dropped!");
+
+					}
 
 				}	
 			}

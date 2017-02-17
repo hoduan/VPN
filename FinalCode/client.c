@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -11,10 +12,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <openssl/evp.h>
 #include <sys/ipc.h>
 #include <sys/select.h>
-#include <mqueue.h>
 #include <errno.h>
 #include <netinet/ip.h>
 #include <openssl/hmac.h>
@@ -28,16 +29,11 @@
 #define UDP_PORT 10001
 #define TCP_PORT 10002
 #define BUFSIZE 4096
-#define MSGSIZE 8192
-#define MAX_CONNECTION 10
 #define KEY_LEN 16
 #define SHA256_LEN 32
-#define MAX_COUNT 100
 #define STDIN 0
 #define HOME "./ca/"
 #define CACERT HOME "ca.crt"
-#define CERTF  HOME "server.crt"
-#define KEYF  HOME  "server.key"
 
 #define PERROR(x) do { perror(x); exit(1); } while (0)
 #define ERROR(x, args ...) do { fprintf(stderr,"ERROR:" x, ## args); exit(1); } while (0)
@@ -48,7 +44,7 @@
 
 void usage()
 {
-        fprintf(stderr, "Usage: client [targethostname] [username:pwd]\n");
+        fprintf(stderr, "Usage: client [targethostname]\n");
         exit(0);
 }
 
@@ -82,7 +78,7 @@ do_crypt(unsigned char *key, unsigned char *iv, unsigned char* intext, int inlen
 		perror("EVP_CipherUpdate");
 	}
 	if(!EVP_CipherFinal_ex(&ctx, outbuf+outlen, &templen)){
-		//perror("EVP_CipherFinal_ex");
+		perror("EVP_CipherFinal_ex");
 	}
 	outlen=outlen+templen;
 	EVP_CIPHER_CTX_cleanup(&ctx);
@@ -186,18 +182,10 @@ void cleantcp(SSL* ssl, SSL_CTX* ctx, int sock_fd)
 	if(sock_fd!=-1) close(sock_fd);
 	if(ssl!=NULL) SSL_free(ssl);
 	if(ctx!=NULL) SSL_CTX_free(ctx);
-	exit(1);
-}
-
-void cleanudp(int fd, int s)
-{
-	if (fd!=-1) close(fd);
-	if (s!=-1) close(s);
-	exit(1);
 }
 
 
-void launchtcp(char *address, char *hostname, char* credential)
+void launchtcp(char *address, char *hostname)
 {
 	int tcp_fd;
 	int l, i, err;
@@ -206,44 +194,36 @@ void launchtcp(char *address, char *hostname, char* credential)
 	unsigned char *key;
 	key = malloc(KEY_LEN);
 	key = getkey();
-	int index;
-	for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
+//	int index;
+//	for(index=0;index<KEY_LEN;index++){printf("%02x",key[index]);}
 	
 	memset(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = htons(TCP_PORT);
 	inet_aton(address, &saddr.sin_addr);
-	
-	
 
 	// socket
 	if((tcp_fd=socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
 		perror("socket() error!");
-		//cleanuptcp(NULL,NULL,sock_fd,mq_fd,mq_fd_tcp,1);
 	}
 	// connect
 	if( (connect(tcp_fd, (struct sockaddr*) &saddr, sizeof(struct sockaddr))) <0 )
 	{
 		perror("connect() error!");
-		//cleanuptcp(NULL,NULL,sock_fd,mq_fd,mq_fd_tcp,1);
 	}
 	printf("Initial TCP connection with server.\n");
 	
 	// send username password
 	char temp[BUFSIZE];
 	int templen;
-	char tempbuf[BUFSIZE];	
 	SSL* ssl;
 	SSL_CTX* ctx = myctx();
-	
-	templen = sprintf(temp,"%s%s", credential,":");
-	memcpy(temp+templen, key, KEY_LEN);
-	templen = templen + KEY_LEN;
 	ssl = SSL_new(ctx);  CHK_NULL(ssl);
 	if(!ssl){
 		perror("SSL_new");
 		cleantcp(ssl,ctx,tcp_fd);
+		exit(1);
 	}
 	SSL_set_fd(ssl,tcp_fd);	
 	
@@ -251,24 +231,41 @@ void launchtcp(char *address, char *hostname, char* credential)
 	if(err != 1) {
 		perror("ssl_connect");
 		cleantcp(ssl,ctx,tcp_fd);
+		exit(1);
 	}
 
 	if(checkCN(ssl,hostname) != 1){
 		printf("Invalid common name.");
-		exit(1);
 		cleantcp(ssl,ctx,tcp_fd);
+		exit(1);
 	}
+
+	
+	unsigned char *username;
+	unsigned char *password;
+	username = malloc(12);
+	password = malloc(30);
+	printf("Please enter your username here:");
+	scanf("%s",username);
+	password =getpass("\nPlese enter your password here:");
+	memcpy(temp,username,strlen(username));
+	memcpy(temp+strlen(username),":",1);
+	memcpy(temp+strlen(username)+1,password,strlen(password));
+	templen = strlen(username) +1 + strlen(password);
+	memcpy(temp+templen,":",1);
+	memcpy(temp+templen+1, key, KEY_LEN);
+	templen = templen +1+ KEY_LEN;
 	
 	l=SSL_write(ssl,temp,templen);
 
-	// clean credential, key, iv
-	memset(credential, 0, strlen(credential));
-	memset(temp, 0, templen);
-	//memset(key, 0, KEY_LEN);
+	// clean credential
+	memset(username, 0, 12);
+	memset(password,0,30);
+	memset(temp, 0, BUFSIZE);
 	
 	l = SSL_read(ssl, buf, BUFSIZE);
 	char *msg = "Authorization failed, disconnect with client.";
-	if(memcmp(msg, buf, strlen(msg)) ==0){printf("\nAuthorization failed\n");exit(1);}
+	if(memcmp(msg, buf, strlen(msg)) ==0){printf("\nAuthorization failed\n");cleantcp(ssl,ctx, tcp_fd);exit(1);}
 	else printf("Connection with %s:%i established\n",inet_ntoa(saddr.sin_addr), ntohs(saddr.sin_port));
 	
 	int c;
@@ -277,12 +274,15 @@ void launchtcp(char *address, char *hostname, char* credential)
 	pid_t childpid;
 	pipe2(fds,O_NONBLOCK);
 	childpid = fork();
+	int status;
 	memcpy(newkey, key, KEY_LEN);
 	
 	////////////////////////////////////////////////////////////////////////////
 	//UDP data tunnle
 	if(childpid == 0)
-    {
+    	{	
+		cleantcp(ssl,ctx, tcp_fd);
+		
 		struct ifreq ifr;
 		int fd, s, fromlen, soutlen=sizeof(sout),mlen;
 		unsigned char *plainbuf, *cryptbuf, *hmacbuf, *tmpbuf;
@@ -290,8 +290,10 @@ void launchtcp(char *address, char *hostname, char* credential)
 		fd_set fdset;
 		char buffer[BUFSIZE];
 		int plainlen, cryptlen;
-		int TUNMODE = IFF_TUN, DEBUG = 1;
+		int TUNMODE = IFF_TUN, DEBUG = 0;
 		int nbytes;
+		int seq = rand()%100 + 10;
+		int curr_seq = 0;
 		plainbuf = malloc(BUFSIZE);
 		cryptbuf = malloc(BUFSIZE);
 		hmacbuf = malloc(BUFSIZE);
@@ -334,24 +336,29 @@ void launchtcp(char *address, char *hostname, char* credential)
 		
 			FD_ZERO(&fdset);
 			FD_SET(fd, &fdset);
+			FD_SET(fds[0], &fdset);
 			FD_SET(s, &fdset);
-			if (select(fd+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
-			close(fds[1]);
-			nbytes = read(fds[0], tmpkey, KEY_LEN);
-			if(nbytes!=-1 && nbytes!=0)
-			{ 
-				//update key
-				if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
-				close connection
-				if(nbytes == 1)
-				{
-					memset(key,0, KEY_LEN);
-					memset(newkey,0,KEY_LEN);
-					memset(tmpkey,0,KEY_LEN);
-					memset(buffer,0, BUFSIZE);
-					close(fd);
-					close(s);
-				}
+			if (select(fd+fds[0]+s+1, &fdset,NULL,NULL,NULL) < 0) PERROR("select");
+			if (FD_ISSET(fds[0], &fdset)) {
+			    close(fds[1]);
+			    nbytes = read(fds[0], tmpkey, KEY_LEN);
+			    if(nbytes!=-1 && nbytes!=0)
+			    { 
+			    	//update key
+			    	if(nbytes == 16)memcpy(newkey, tmpkey, KEY_LEN);
+			    	//close connection
+			    	if(nbytes == 1)
+			    	{
+			    		memset(key,0, KEY_LEN);
+			    		memset(newkey,0,KEY_LEN);
+			    		memset(tmpkey,0,KEY_LEN);
+			    		memset(buffer,0, BUFSIZE);
+			    		close(fd);
+			    		close(s);
+			    		exit(0);
+			    	}
+			    }
+				
 			}
 			if (FD_ISSET(fd, &fdset)) {
 				if (DEBUG) write(1,">", 1);
@@ -360,33 +367,49 @@ void launchtcp(char *address, char *hostname, char* credential)
 				{	//do encryption
 					iv = getkey();
 					cryptlen = do_crypt(key, iv, buffer, mlen, cryptbuf, 1);
-					memcpy(tmpbuf,iv,KEY_LEN);
-					memcpy(tmpbuf+KEY_LEN, cryptbuf, cryptlen);
-				
+ 					char tmp_seq[8]={0,0,0,0,0,0,0,0};
+					snprintf(tmp_seq, 8, "%d", seq);
+					memcpy(tmpbuf, tmp_seq, 8);
+					memcpy(tmpbuf+8,iv,KEY_LEN);
+					memcpy(tmpbuf+8+KEY_LEN, cryptbuf, cryptlen);
+                                                	
 					//hmac inclued iv + encrypted data
-					do_hmac(key,tmpbuf,KEY_LEN+cryptlen,hmacbuf);
-					
+					do_hmac(key,tmpbuf,8+KEY_LEN+cryptlen,hmacbuf);
+				
+					//copy iv, encrypted data and hmac into buffer and then send
+                                                memcpy(buffer, tmp_seq, 8);
+                                                memcpy(buffer+8, iv, KEY_LEN);
+                                                memcpy(buffer+8+KEY_LEN, cryptbuf, cryptlen);
+                                                memcpy(buffer+8+KEY_LEN+cryptlen, hmacbuf, SHA256_LEN);
+                                                int buflen = 8+KEY_LEN + cryptlen + SHA256_LEN;
+
+
+				/*	
 					//copy iv, encrypted data and hmac into buffer and then send
 					memcpy(buffer, iv, KEY_LEN);
 					memcpy(buffer+KEY_LEN, cryptbuf, cryptlen);
 					memcpy(buffer+KEY_LEN+cryptlen, hmacbuf, SHA256_LEN);
 					int buflen = KEY_LEN + cryptlen + SHA256_LEN;
-				
+				*/
 					if(sendto(s, buffer, buflen, 0, (struct sockaddr *)&from, fromlen) < 0)
 						PERROR("send to");
+					seq++;
 				}
+				
 			}
 
 			if(FD_ISSET(s, &fdset)){
+				int seq_tmp;
+                                char s_tmp[8];
 				if (DEBUG) write(1,"<", 1);
-                mlen = recvfrom(s, buffer, sizeof(buffer), 0, (struct sockaddr *)&sout, &soutlen);
-               /* if ((sout.sin_addr.s_addr != from.sin_addr.s_addr) || (sout.sin_port != from.sin_port))
-                    printf("Got packet from  %s:%i instead of %s:%i\n",
-                    inet_ntoa(sout.sin_addr), ntohs(sout.sin_port),
-                    inet_ntoa(from.sin_addr), ntohs(from.sin_port));*/
-		
+		                mlen = recvfrom(s, buffer, sizeof(buffer), 0, (struct sockaddr *)&sout, &soutlen);
+				memcpy(s_tmp,buffer,8);
+				seq_tmp = atoi(s_tmp);
+				//printf("SN: %d",seq_tmp);
+				if(curr_seq == 0)
+				{
 					memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
-					memcpy(iv, buffer, KEY_LEN);
+					memcpy(iv, buffer+8, KEY_LEN);
 					// do hmac to check the signature, if matches, decrypt the data
 					do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
 					//change key
@@ -401,13 +424,52 @@ void launchtcp(char *address, char *hostname, char* credential)
 					if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
 					{	
 						//do decryption, need to exclude iv and hmac
-                        plainlen = do_crypt(key, iv,cryptbuf+KEY_LEN,mlen-KEY_LEN-SHA256_LEN, plainbuf, 0);
-                        iwrite(fd, plainbuf, plainlen);}
+                        			plainlen = do_crypt(key, iv,cryptbuf+8+KEY_LEN,mlen-8-KEY_LEN-SHA256_LEN, plainbuf, 0);
+                        			iwrite(fd, plainbuf, plainlen);
+						curr_seq = seq_tmp;
+					}
 					
 					else{
 						printf("ERROR, message check failed.\n");
 						printf("message length: %d\n", mlen);
-						}	
+					}
+				
+				}
+				else if(curr_seq != seq_tmp)
+				//else if((curr_seq - 500) < seq_tmp && seq_tmp < (curr_seq + 500) && seq_tmp != curr_seq)
+				{
+					memcpy(cryptbuf, buffer, mlen-SHA256_LEN);
+					memcpy(iv, buffer+8, KEY_LEN);
+					// do hmac to check the signature, if matches, decrypt the data
+					do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+					//change key
+					if(memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) !=0 && memcmp(key, newkey, KEY_LEN)!=0)
+					{	
+						memcpy(key, newkey, KEY_LEN);
+						do_hmac(key,cryptbuf,mlen-SHA256_LEN,hmacbuf);
+						printf("\nupdated key in client:");
+						for(i=0;i<16;i++) printf("%02x",key[i]);
+						printf("\n");
+					}
+					if (memcmp(hmacbuf, buffer+mlen-SHA256_LEN, SHA256_LEN) == 0 && mlen!= -1)
+					{	
+						//do decryption, need to exclude iv and hmac
+                        			plainlen = do_crypt(key, iv,cryptbuf+8+KEY_LEN,mlen-8-KEY_LEN-SHA256_LEN, plainbuf, 0);
+                        			iwrite(fd, plainbuf, plainlen);
+						curr_seq = seq_tmp;
+					}
+					
+					else{
+						printf("ERROR, message check failed.\n");
+						printf("message length: %d\n", mlen);
+					}
+				}
+				else
+                                        {
+                                                printf("sequence number check failed and packet dropped!");
+
+                                        }
+	
 
 			}
 
@@ -422,6 +484,7 @@ void launchtcp(char *address, char *hostname, char* credential)
 	//TCP tunnle control
 	else if(childpid > 0)
 	{	
+		memset(key,0,KEY_LEN);
 		while(1)
 		{
 			fd_set tcp_set;
@@ -443,16 +506,18 @@ void launchtcp(char *address, char *hostname, char* credential)
 						templen=templen+KEY_LEN; 
 						l = SSL_write(ssl, temp, templen);
 						write(fds[1], newkey, KEY_LEN);
-						printf("\nnew key genearte is:");
-                                        for(i=0;i<16;i++)printf("%02x",key[i]);
-
 					}
 					if(c == '0')
-					{	
+					{
+						memset(key,0,KEY_LEN);
+						memset(newkey,0,KEY_LEN);
+						memset(buf,0,BUFSIZE);	
 						close(fds[0]);
-						l= SSL_write(ssl,'0',1);
-						write(fds[1],"0:0",1);
+						l= SSL_write(ssl,"0:0",3);
+						write(fds[1],"0",1);
 						cleantcp(ssl, ctx, tcp_fd);
+						wait(&status);
+						exit(0);
 					}
 				}
 			}
@@ -464,7 +529,12 @@ void launchtcp(char *address, char *hostname, char* credential)
 				if (l<0)
 				{
 					perror("TCP recerve msg error");
+					memset(key,0,KEY_LEN);
+					memset(newkey,0,KEY_LEN);
+					memset(buf,0,BUFSIZE);	
+					
 					cleantcp(ssl,ctx,tcp_fd);
+					exit(1);
 				}
 				if (l > 0 )
 				{
@@ -475,7 +545,12 @@ void launchtcp(char *address, char *hostname, char* credential)
 				else if (l==0)
 				{
 					printf("Server disconnect\n");
+					memset(key,0,KEY_LEN);
+					memset(newkey,0,KEY_LEN);
+					memset(buf,0,BUFSIZE);	
+					
 					cleantcp(ssl,ctx,tcp_fd);
+					exit(1);
 				}
 			}
 		}
@@ -492,8 +567,8 @@ int main(int argc, char *argv[])
 	char * ip;
 	struct hostent *serverHost;
 
-	if(argc != 3) {
-        	printf("Usage: hostname  username:pwd\n");
+	if(argc != 2) {
+        	printf("Usage: hostname\n");
         	exit(1);
     	}
 
@@ -504,6 +579,6 @@ int main(int argc, char *argv[])
     	}
 	ip = inet_ntoa(*((struct in_addr *)serverHost->h_addr));
 
-	launchtcp(ip, argv[1],argv[2]);
+	launchtcp(ip, argv[1]);
 
 }
